@@ -10,3 +10,11 @@
 # standing in a different repo. If all your repos live under ~/workspace,
 # adding it here lets that path resolve to ~/workspace/myrepo/docs/notes.md.
 #QUICKLOOK_ROOTS="$HOME/workspace:$HOME/src"
+
+# QUICKLOOK_EDITOR: command launched by `e` in the preview overlay, at the
+# current file+line. Precedence: this key > $EDITOR > "zed --wait". Set this
+# instead of (or in addition to) exporting $EDITOR in your shell: the herdr
+# server process that launches this pane does not reliably inherit your
+# interactive shell's exported vars, so a config value here is the reliable
+# path (the same reason QUICKLOOK_ROOTS lives here instead of relying on env).
+#QUICKLOOK_EDITOR="zed --wait"

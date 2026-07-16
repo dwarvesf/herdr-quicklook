@@ -14,6 +14,7 @@ A few things that make it more than a pager:
 - **A GitHub link opens your local file.** Paste `github.com/org/repo/blob/main/src/x.go#L42` and it opens *your checkout* at line 42, not a browser tab, resolving across worktrees and your other repos.
 - **An agent can put a file on your screen.** Set `QUICKLOOK_TOKEN` and any script or coding agent pops a file into your overlay, no clipboard needed.
 - **Quick look, then commit to it.** Reading in the overlay and want the full tree? One key (`o`) escalates the same file, at the same line, into [herdr-file-viewer](https://github.com/smarzban/herdr-file-viewer).
+- **Or straight into your editor.** `e` opens the same file, at the same line, in `$EDITOR` (config-overridable); the overlay resumes once you close it.
 
 ## What it opens
 
@@ -58,6 +59,7 @@ Reload with `herdr server reload-config`.
 |---|---|
 | `q` or `Esc Esc` | Close the overlay (a bare Esc cannot coexist with arrow-key scrolling in less, so quit is double-Esc) |
 | `o` (or `v`) | **Escalate**: close the overlay and open this file, at the same line, in the herdr-file-viewer pane (when that plugin is installed) |
+| `e` | **Edit**: open this file, at the same line, in `$EDITOR` (config-overridable, default `zed --wait`); the overlay resumes when the editor exits |
 | `/`, `n`, `N` | Search inside the file |
 | arrows / PgUp / PgDn | Scroll |
 
@@ -72,6 +74,12 @@ Optional. Create `.env` in the directory `herdr plugin config-dir herdr-quickloo
 # print repo-prefixed paths like "myrepo/docs/notes.md" and all your repos
 # live under one parent directory.
 QUICKLOOK_ROOTS="$HOME/workspace:$HOME/src"
+
+# Command launched by `e` in the overlay. Precedence: this key > $EDITOR >
+# "zed --wait". Set it here rather than relying on $EDITOR alone: the herdr
+# server process that launches this pane does not reliably inherit an
+# interactive shell's exported vars.
+QUICKLOOK_EDITOR="zed --wait"
 ```
 
 ## Agent-push (programmatic tokens)
@@ -115,7 +123,7 @@ Everything else is optional, and the plugin degrades instead of failing:
 
 ## How it works
 
-- **preview** opens a plugin overlay pane (a real TTY) that reads the clipboard, resolves the token, and renders it with `less` (bat as the `LESSOPEN` colorizer). Esc-to-quit ships via a `lesskey` file.
+- **preview** opens a plugin overlay pane (a real TTY) that reads the clipboard, resolves the token, and renders it with `less` (bat as the `LESSOPEN` colorizer). Esc-to-quit ships via a `lesskey` file. `o` escalates via less's single `visual` slot (`$VISUAL` -> `escalate.sh`); `e` cannot reuse that slot, so it is bound directly to less's `pshell` shell-escape action instead (`escalate-editor.sh`, with a `^P` extra-string prefix that suppresses the shell-escape's normal "done" prompt so the overlay resumes cleanly).
 - **open-in-viewer** has no goto-file API to call, so it drives the viewer's own keys over the herdr socket: it ensures a `Files` pane exists in the focused tab (opening one via the viewer's action if needed), then sends `f`, types the repo-relative path, and presses Enter; `path:123` follows up with the viewer's `:` goto-line. This is UI-scripting by nature: if the viewer's keymap changes upstream, this action needs a revisit.
 - No event hooks, no daemons, nothing runs until you press your key.
 
