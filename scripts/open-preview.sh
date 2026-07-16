@@ -1,0 +1,26 @@
+#!/usr/bin/env bash
+# Action `preview`: open the preview overlay pane, forwarding the origin
+# workspace's cwd so relative paths resolve against the repo the user was in
+# (the overlay itself becomes the focused pane once open).
+set -uo pipefail
+
+herdr_bin="${HERDR_BIN_PATH:-herdr}"
+ctx="${HERDR_PLUGIN_CONTEXT_JSON:-}"
+
+repo=""
+if [ -n "$ctx" ] && command -v jq >/dev/null 2>&1; then
+  repo="$(printf '%s' "$ctx" | jq -r '.focused_pane_cwd // .workspace_cwd // empty' 2>/dev/null || true)"
+fi
+[ -n "$repo" ] || repo="${HERDR_WORKSPACE_CWD:-}"
+
+set -- plugin pane open \
+  --plugin herdr-quicklook \
+  --entrypoint preview \
+  --placement overlay \
+  --focus
+
+if [ -n "$repo" ] && [ -d "$repo" ]; then
+  set -- "$@" --cwd "$repo"
+fi
+
+exec "$herdr_bin" "$@"

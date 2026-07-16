@@ -1,0 +1,12 @@
+# herdr-quicklook configuration (all optional).
+# Copy this file as `.env` into the directory printed by:
+#   herdr plugin config-dir herdr-quicklook
+# Without a .env the plugin works with defaults; this file only ADDS lookup roots.
+
+# QUICKLOOK_ROOTS: extra directories to try when a copied path does not exist
+# under the current pane directory or repo. Colon-separated.
+#
+# The problem it solves: an agent prints `myrepo/docs/notes.md` but you are
+# standing in a different repo. If all your repos live under ~/workspace,
+# adding it here lets that path resolve to ~/workspace/myrepo/docs/notes.md.
+#QUICKLOOK_ROOTS="$HOME/workspace:$HOME/src"

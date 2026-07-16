@@ -1,0 +1,6 @@
+# q or Esc-Esc closes the preview. A bare \e binding cannot coexist with
+# arrow keys (they send ESC-prefixed sequences and less fires the single-char
+# binding immediately, verified on less 668), so quit is double-Esc instead.
+#command
+\e\e quit
+o visual

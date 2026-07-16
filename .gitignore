@@ -1,0 +1,12 @@
+# dwarves-kit / SDD operating-layer artifacts are internal process, not part of
+# the published plugin. Kept out of this public repo (they live in a private
+# development repo). A `kit:adopt` run re-creates them locally; do not commit.
+AGENTS.md
+WORKFLOW.md
+.kit.toml
+docs/
+.claude/
+
+# local scratch
+*.log
+.DS_Store
