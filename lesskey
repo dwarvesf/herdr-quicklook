@@ -10,7 +10,24 @@
 # mirrors LESSEDIT's own default expansion (current-line + shell-escaped
 # filename); QUICKLOOK_EDITOR_SCRIPT is exported by preview-pane.sh.
 # Verified against a real less 668 session (PR proof).
+#
+# `d` -> git diff: bound to `shell` (the `!` slot), a THIRD distinct action
+# from `o`'s `visual` and `e`'s `pshell`. `shell`'s extra string uses a
+# DIFFERENT %-expansion than pshell/visual: a bare `%` (not the two-char
+# `%g`) is replaced by the current filename , confirmed empirically (a real
+# less session, see the PR proof) to arrive as ONE argv element even with a
+# space in the name, so `%` (unquoted; wrapping it in our own quotes here
+# double-escapes and SPLITS a spaced filename into two args, verified the
+# same way) is correct, not `%g` (that two-char code isn't recognized here
+# and leaves a literal trailing "g" stuck to the filename , also verified
+# the hard way). Runs dirty-diff.sh (a sibling of escalate-editor.sh, path
+# derived from $QUICKLOOK_EDITOR_SCRIPT's directory so preview-pane.sh does
+# not need a new export), which opens a nested less on `git diff`
+# (delta-colored if installed, else less-colored) for a dirty file, or
+# prints a no-changes notice for a clean one. Same `\020` (^P) suppression
+# as `e`. See scripts/dirty-diff.sh for the toggle-back detail.
 #command
 \e\e quit
 o visual
 e pshell \020"$QUICKLOOK_EDITOR_SCRIPT" ?lm+%lm. %g\n
+d shell \020"$(dirname "$QUICKLOOK_EDITOR_SCRIPT")/dirty-diff.sh" %\n
