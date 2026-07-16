@@ -14,12 +14,23 @@
 | # | Command | Exit | Verdict |
 |---|---|---|---|
 | 1 | `shellcheck -x scripts/*.sh` | 0 | PASS |
-| 2 | `bats tests/` (30 cases) | 0, `30 ok` | PASS |
-| 3 | Negative control: mutate worktree probe (`$w/$p` -> `$w/$p.mutated`), `bats tests/` | non-zero, `not ok 23 resolve: cross-worktree finds worktree-only file` | RED as expected |
-| 4 | Restore mutation, `bats tests/` | 0, `30 ok` | PASS (restored) |
+| 2 | `bats tests/` (41 cases, after review fixes) | 0, `41 ok` | PASS |
+| 3 | Negative control: mutate worktree probe (`$w/$p` -> `$w/$p.mutated`), `bats tests/` | non-zero, `not ok resolve: cross-worktree...` | RED as expected |
+| 4 | Restore mutation, `bats tests/` | 0, `41 ok` | PASS (restored) |
+| 6 | Security PoCs re-run post-fix (abs smuggle, `..` traversal, urldecode backslash, `c++` path, query strip) | all blocked / correct | PASS |
 | 5 | Live agent-push overlay on the Mini (herdr 0.7.4): `herdr plugin pane open --plugin herdr-quicklook --entrypoint preview --placement overlay --env QUICKLOOK_TOKEN=... --cwd ...` then `herdr pane read` | recorded below | see Run detail |
 
 ## Run detail
+
+Run 6 (post-review security PoCs, verified blocked):
+
+```
+map_github_url "https://github.com/o/r/blob/main//etc/passwd";        resolve_github -> rc 1 (blocked)
+map_github_url "https://github.com/o/r/blob/main/../../../etc/passwd"; resolve_github -> rc 1 (blocked)
+urldecode "foo\nbar%0abaz" | xxd -> foo\nbar<0a>baz  (literal \n preserved; only %0a decodes)
+map_github_url ".../blob/main/docs/c++.md" -> GH_REST=main/docs/c++.md  (+ preserved)
+map_github_url ".../blob/main/x.go?plain=1" -> GH_REST=main/x.go       (query stripped)
+```
 
 Runs 1-4 executed locally on the Air, 2026-07-16, branch `feat/token-kinds`.
 Run 3+4 is the required negative control: the suite goes red when the

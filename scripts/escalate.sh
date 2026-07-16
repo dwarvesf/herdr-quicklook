@@ -17,7 +17,10 @@ for a in "$@"; do
 done
 [ -z "$file" ] && exit 0
 
-bash "$script_dir/open-in-viewer.sh" "${file}${line:+:$line}"
+# Pass the ACTUAL on-screen file explicitly. `env -u QUICKLOOK_TOKEN` stops
+# open-in-viewer's pick_token from re-reading the inherited env token (which
+# would re-resolve the original token, not the file the user scrolled to).
+env -u QUICKLOOK_TOKEN bash "$script_dir/open-in-viewer.sh" "${file}${line:+:$line}"
 
 # Close the overlay: this script's parent is the less holding the popup open.
 kill -TERM "$PPID" 2>/dev/null

@@ -7,6 +7,10 @@ set -uo pipefail
 herdr_bin="${HERDR_BIN_PATH:-herdr}"
 ctx="${HERDR_PLUGIN_CONTEXT_JSON:-}"
 
+# Capture the caller's token BEFORE any `set --` reassigns the positional
+# parameters (that clobbers $1 to the first herdr-command word otherwise).
+token="${1:-}"
+
 repo=""
 if [ -n "$ctx" ] && command -v jq >/dev/null 2>&1; then
   repo="$(printf '%s' "$ctx" | jq -r '.focused_pane_cwd // .workspace_cwd // empty' 2>/dev/null || true)"
@@ -25,9 +29,9 @@ fi
 
 # Agent-push: a token argument rides into the pane as $QUICKLOOK_TOKEN (env is
 # the only channel that crosses `plugin pane open`; the pane checks it before
-# the clipboard).
-if [ -n "${1:-}" ]; then
-  set -- "$@" --env "QUICKLOOK_TOKEN=$1"
+# the clipboard). Only forwarded when the caller actually passed one.
+if [ -n "$token" ]; then
+  set -- "$@" --env "QUICKLOOK_TOKEN=$token"
 fi
 
 exec "$herdr_bin" "$@"

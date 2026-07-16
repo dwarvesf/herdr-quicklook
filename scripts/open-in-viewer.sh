@@ -65,6 +65,13 @@ if [ -z "$root" ] || [[ "$target" != "$root"/* ]]; then
 fi
 rel="${target#"$root"/}"
 
+# $rel is typed into the file-viewer TUI via send-text; a control byte in the
+# filename (embedded newline/tab, reachable from a maliciously-named file in an
+# untrusted checkout) would inject extra keystrokes into that plugin. Refuse.
+case "$rel" in
+  *[$'\n\r\t']*) notify "unsafe filename (control chars); refusing"; exit 0 ;;
+esac
+
 tab="$(printf '%s' "$focused" | jq -r '.result.pane.tab_id // empty' 2>/dev/null)"
 files_pane() {
   "$herdr_bin" pane list 2>/dev/null \

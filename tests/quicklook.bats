@@ -139,9 +139,55 @@ teardown() {
   [ "$GH_REPO" = "proj" ] && [ "$GH_REST" = "main/docs/x.md" ]
 }
 
+@test "map: /raw/ blob shape extraction" {
+  map_github_url "https://github.com/o/proj/raw/main/docs/x.md"
+  [ "$GH_REPO" = "proj" ] && [ "$GH_REST" = "main/docs/x.md" ]
+}
+
+@test "map: query string is stripped before splitting" {
+  map_github_url "https://github.com/o/r/blob/main/src/x.go?plain=1"
+  [ "$GH_REST" = "main/src/x.go" ]
+}
+
+@test "map: query plus fragment still yields the line" {
+  map_github_url "https://github.com/o/r/blob/main/a.md?plain=1#L10"
+  [ "$GH_REST" = "main/a.md" ] && [ "$GH_LINE" = "10" ]
+}
+
+@test "map: literal + in path stays a plus (path decoding, not query)" {
+  map_github_url "https://github.com/o/r/blob/main/docs/c++.md"
+  [ "$GH_REST" = "main/docs/c++.md" ]
+}
+
+@test "map: backslash escapes are not interpreted by urldecode" {
+  map_github_url 'https://github.com/o/r/blob/main/a\nb.md'
+  # the \n must survive as two literal chars, not become a newline
+  [ "$GH_REST" = 'main/a\nb.md' ]
+}
+
 @test "map: non-github URL fails" {
   run map_github_url "https://example.com/o/r/blob/main/a.md"
   [ "$status" -ne 0 ]
+}
+
+# ---- resolve_github traversal/absolute rejection (security) ----
+
+@test "resolve_github: absolute smuggle (double slash) is refused" {
+  # blob/main//etc/hosts -> rest main//etc/hosts -> candidate /etc/hosts
+  run resolve_github "repo" "main//etc/passwd"
+  [ "$status" -eq 1 ]
+}
+
+@test "resolve_github: dotdot traversal is refused" {
+  run resolve_github "repo" "main/../../../etc/passwd"
+  [ "$status" -eq 1 ]
+}
+
+@test "unsafe_relpath: classifies absolute and traversal, allows plain" {
+  run unsafe_relpath "/etc/passwd";    [ "$status" -eq 0 ]
+  run unsafe_relpath "../x";           [ "$status" -eq 0 ]
+  run unsafe_relpath "a/../b";         [ "$status" -eq 0 ]
+  run unsafe_relpath "a/b/c.md";       [ "$status" -eq 1 ]
 }
 
 # ---- resolve ----
