@@ -1,0 +1,39 @@
+# herdr-plugin.toml, manifest for herdr-quicklook.
+#
+# Open whatever path or URL is on the clipboard, without leaving herdr:
+#   - `preview` action  -> overlay pane: bat (or less) renders the file; URLs go
+#     to the default browser; bare filenames become a repo-wide fzf pick.
+#   - `open-in-viewer` action -> hands the path to the herdr-file-viewer plugin
+#     pane by driving its own fuzzy-find keys (optional; needs that plugin).
+#
+# No event hooks, no daemons: both actions run only when invoked (bind them to
+# keys in ~/.config/herdr/config.toml, see README).
+
+id = "herdr-quicklook"
+name = "herdr-quicklook"
+version = "0.1.0"
+description = "Quick Look for herdr: pop the clipboard's path in an overlay, escalate to the file-viewer with one key, URLs go to the browser."
+min_herdr_version = "0.7.0"
+platforms = ["linux", "macos"]
+
+# The preview pane: an overlay with a real TTY running bat/less (and fzf for
+# ambiguous bare filenames). Opened by the `preview` action below.
+[[panes]]
+id = "preview"
+title = "Preview"
+placement = "overlay"
+command = ["bash", "scripts/preview-pane.sh"]
+
+[[actions]]
+id = "preview"
+platforms = ["linux", "macos"]
+title = "Quick-look clipboard path"
+description = "Render the clipboard's file path in an overlay pane; press o inside to escalate to the file-viewer (URLs open the browser)."
+command = ["bash", "scripts/open-preview.sh"]
+
+[[actions]]
+id = "open-in-viewer"
+platforms = ["linux", "macos"]
+title = "Open clipboard path in file viewer"
+description = "Open the clipboard's file path inside the herdr-file-viewer pane (requires that plugin)."
+command = ["bash", "scripts/open-in-viewer.sh"]
