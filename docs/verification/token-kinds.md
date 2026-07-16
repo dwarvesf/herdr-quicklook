@@ -35,7 +35,30 @@ real server with no clipboard involvement.
 
 ### Run 5 output
 
-(pending; appended before merge)
+Executed 2026-07-16 on the Mini (herdr 0.7.4, branch installed via
+`herdr plugin install dwarvesf/herdr-quicklook --ref feat/token-kinds --yes`):
+
+1. Script-level end-to-end (the part this spec changed), headless:
+
+```
+$ cd ~/workspace/tieubao && QUICKLOOK_TOKEN="ops-toolkit/CLAUDE.md:5" \
+    bash <plugin_root>/scripts/preview-pane.sh </dev/null | head -6
+     File: /Users/tieubao/workspace/tieubao/ops-toolkit/CLAUDE.md
+   1 # ops-toolkit
+   ...
+RC=0
+```
+
+PASS: the env token bypasses the clipboard, resolves via the roots chain,
+and renders the target file (bat header + content). No clipboard read.
+
+2. Pane-level: `herdr plugin pane open ... --env QUICKLOOK_TOKEN=...`
+returned `plugin_pane_opened` (pane `w3:p4`/`w3:p5`, label `Preview`), but a
+headless server with NO ATTACHED CLIENT reaps the overlay pane within ~1s,
+so `pane read` cannot capture it. This matches the overlay's session-modal
+design (it exists to be shown to an attached human); the v0.1 demo GIF
+already proves overlay rendering with a client attached. Re-verified
+visually after the Air server restart.
 
 ## Reproduce
 
