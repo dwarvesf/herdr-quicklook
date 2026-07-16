@@ -13,7 +13,8 @@ Born from a daily annoyance: coding agents print file paths all day (`src/api/ha
 
 | Clipboard content | What happens |
 |---|---|
-| `https://…` / `http://…` | Opens in your default browser |
+| a GitHub **blob/raw URL** (`github.com/o/r/blob/main/src/x.go#L42`) | Opens the file in your **local checkout** at that line when one exists (current repo, worktrees, `QUICKLOOK_ROOTS/<repo>`); otherwise the browser |
+| any other `https://…` / `http://…` | Opens in your default browser |
 | `/absolute/path/file.md` | Preview (or viewer) at that file |
 | `relative/path/file.md` | Resolved against the focused pane's cwd, then its git root |
 | a path from **another worktree** of the same repo | Resolved via `git worktree list`, both directions |

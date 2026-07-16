@@ -104,3 +104,117 @@ teardown() {
   run resolve "no/such/file.md"
   [ "$status" -eq 1 ]
 }
+
+# ---- classify_token ----
+
+@test "classify: blob URL is github" {
+  run classify_token "https://github.com/o/r/blob/main/src/x.go"
+  [ "$output" = "github" ]
+}
+
+@test "classify: /raw/ URL is github" {
+  run classify_token "https://github.com/o/r/raw/main/x.md"
+  [ "$output" = "github" ]
+}
+
+@test "classify: raw.githubusercontent is github" {
+  run classify_token "https://raw.githubusercontent.com/o/r/main/x.md"
+  [ "$output" = "github" ]
+}
+
+@test "classify: generic https is url" {
+  run classify_token "https://example.com/a/b"
+  [ "$output" = "url" ]
+}
+
+@test "classify: plain path is path" {
+  run classify_token "sub/inrepo.md:12"
+  [ "$output" = "path" ]
+}
+
+# ---- map_github_url ----
+
+@test "map: blob URL extracts repo, rest, line" {
+  map_github_url "https://github.com/own/proj/blob/main/src/a.go#L42"
+  [ "$GH_REPO" = "proj" ] && [ "$GH_REST" = "main/src/a.go" ] && [ "$GH_LINE" = "42" ]
+}
+
+@test "map: line range keeps start line" {
+  map_github_url "https://github.com/o/r/blob/main/a.md#L42-L60"
+  [ "$GH_LINE" = "42" ]
+}
+
+@test "map: /raw/ shape extraction" {
+  map_github_url "https://github.com/o/proj/raw/main/docs/x.md"
+  [ "$GH_REPO" = "proj" ] && [ "$GH_REST" = "main/docs/x.md" ]
+}
+
+@test "map: raw.githubusercontent shape" {
+  map_github_url "https://raw.githubusercontent.com/o/proj/main/docs/x.md"
+  [ "$GH_REPO" = "proj" ] && [ "$GH_REST" = "main/docs/x.md" ]
+}
+
+@test "map: query string is stripped before splitting" {
+  map_github_url "https://github.com/o/r/blob/main/src/x.go?plain=1"
+  [ "$GH_REST" = "main/src/x.go" ]
+}
+
+@test "map: query plus fragment still yields the line" {
+  map_github_url "https://github.com/o/r/blob/main/a.md?plain=1#L10"
+  [ "$GH_REST" = "main/a.md" ] && [ "$GH_LINE" = "10" ]
+}
+
+@test "map: literal + in path stays a plus" {
+  map_github_url "https://github.com/o/r/blob/main/docs/c++.md"
+  [ "$GH_REST" = "main/docs/c++.md" ]
+}
+
+@test "map: backslash escapes are not interpreted" {
+  map_github_url 'https://github.com/o/r/blob/main/a\nb.md'
+  [ "$GH_REST" = 'main/a\nb.md' ]
+}
+
+@test "map: non-github URL fails" {
+  run map_github_url "https://example.com/o/r/blob/main/a.md"
+  [ "$status" -ne 0 ]
+}
+
+# ---- resolve_github + traversal rejection (security) ----
+
+@test "resolve_github: repo-name match in current repo" {
+  run resolve_github "repo" "main/sub/inrepo.md"
+  [ "$status" -eq 0 ] && [ "$output" = "$FIX/repo/sub/inrepo.md" ]
+}
+
+@test "resolve_github: ref containing slash resolves via successive split" {
+  run resolve_github "repo" "feat/nested-ref/sub/inrepo.md"
+  [ "$status" -eq 0 ] && [ "$output" = "$FIX/repo/sub/inrepo.md" ]
+}
+
+@test "resolve_github: roots/<repo>/<path> match" {
+  QUICKLOOK_ROOTS="$FIX/roots"
+  run resolve_github "myrepo" "main/docs/notes.md"
+  [ "$status" -eq 0 ] && [ "$output" = "$FIX/roots/myrepo/docs/notes.md" ]
+}
+
+@test "resolve_github: unresolvable returns rc 1 (browser fallback)" {
+  run resolve_github "ghost" "main/no/file.md"
+  [ "$status" -eq 1 ]
+}
+
+@test "resolve_github: absolute smuggle (double slash) is refused" {
+  run resolve_github "repo" "main//etc/passwd"
+  [ "$status" -eq 1 ]
+}
+
+@test "resolve_github: dotdot traversal is refused" {
+  run resolve_github "repo" "main/../../../etc/passwd"
+  [ "$status" -eq 1 ]
+}
+
+@test "unsafe_relpath: classifies absolute and traversal, allows plain" {
+  run unsafe_relpath "/etc/passwd";  [ "$status" -eq 0 ]
+  run unsafe_relpath "../x";         [ "$status" -eq 0 ]
+  run unsafe_relpath "a/../b";       [ "$status" -eq 0 ]
+  run unsafe_relpath "a/b/c.md";     [ "$status" -eq 1 ]
+}

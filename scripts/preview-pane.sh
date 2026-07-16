@@ -22,16 +22,27 @@ load_config
 raw="$(pick_token "${1:-}")"
 [ -z "$raw" ] && pause_close "quicklook: nothing to open (no token, clipboard empty)"
 
-case "$raw" in
-  http://* | https://*)
+target=""
+CLIP_LINE=""
+case "$(classify_token "$raw")" in
+  github)
+    if map_github_url "$raw" && target="$(resolve_github "$GH_REPO" "$GH_REST")"; then
+      CLIP_LINE="$GH_LINE"
+    else
+      # no local checkout matches: the browser is the right place after all
+      url_open "$raw"
+      exit 0
+    fi
+    ;;
+  url)
     url_open "$raw"
     exit 0
     ;;
+  path)
+    parse_token "$raw"
+    target="$(resolve "$CLIP_PATH")" || true
+    ;;
 esac
-
-parse_token "$raw"
-
-target="$(resolve "$CLIP_PATH")"
 
 if [ -z "${target:-}" ]; then
   root="$(git rev-parse --show-toplevel 2>/dev/null)"
