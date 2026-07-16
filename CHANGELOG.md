@@ -1,5 +1,12 @@
 # Changelog
 
+## Unreleased
+
+- Agent-push: token priority is `$QUICKLOOK_TOKEN` env > script argument > clipboard, in both actions; `preview` forwards an argument into the pane via `--env`. Agents can now put a file on the human's screen without touching the clipboard.
+- `resolve` always returns an absolute path (fixes a latent case where a cwd-relative hit failed open-in-viewer's repo-containment check).
+- `open-in-viewer` refuses filenames containing control characters before typing them into the file-viewer TUI.
+- bats test suite (`bats tests/`) over the resolve chain, token parsing, and priority; shellcheck + bats documented as the dev loop.
+
 ## 0.1.0 (2026-07-16)
 
 Initial release.

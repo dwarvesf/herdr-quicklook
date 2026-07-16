@@ -17,8 +17,10 @@ pause_close() {
 
 load_config
 
-raw="$(clip_read)"
-[ -z "$raw" ] && pause_close "quicklook: clipboard is empty"
+# Token priority: $QUICKLOOK_TOKEN env (agents set this via `plugin pane open
+# --env`) > $1 > clipboard. Lets an agent push a file onto the screen.
+raw="$(pick_token "${1:-}")"
+[ -z "$raw" ] && pause_close "quicklook: nothing to open (no token, clipboard empty)"
 
 case "$raw" in
   http://* | https://*)
