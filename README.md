@@ -50,6 +50,11 @@ command = "herdr plugin action invoke preview --plugin herdr-quicklook"
 key = "prefix+o"
 type = "shell"
 command = "herdr plugin action invoke open-in-viewer --plugin herdr-quicklook"
+
+[[keys.command]]              # reopen a recent quicklook
+key = "prefix+shift+v"
+type = "shell"
+command = "herdr plugin action invoke recents --plugin herdr-quicklook"
 ```
 
 Reload with `herdr server reload-config`.
@@ -65,6 +70,12 @@ Reload with `herdr server reload-config`.
 | arrows / PgUp / PgDn | Scroll |
 
 The overlay is sized by herdr; it closes itself after handing a URL to the browser.
+
+## Recents (`prefix+shift+v`)
+
+Every successful open (a file, a URL, a `command`/`viewer`-mode result) is recorded to a small, bounded log (last 20, deduped: reopening something already in the log just moves it back to the front). Press the binding and it reopens the most recent entry directly; with [`fzf`](https://github.com/junegunn/fzf) installed and more than one entry, it opens an fzf pick over the last N instead.
+
+The log lives outside any git repo, at `${XDG_STATE_HOME:-~/.local/state}/herdr-quicklook/recents`, never inside your working tree. Recording is best-effort: a write failure (unwritable state dir, or the guard above refusing a path that resolved inside a repo) never blocks the open it was trying to record.
 
 ## Configuration
 
@@ -126,6 +137,7 @@ Everything else is optional, and the plugin degrades instead of failing:
 
 - **preview** opens a plugin overlay pane (a real TTY) that reads the clipboard, resolves the token, and renders it with `less` (bat as the `LESSOPEN` colorizer). Esc-to-quit ships via a `lesskey` file. `o` escalates via less's single `visual` slot (`$VISUAL` -> `escalate.sh`); `e` cannot reuse that slot, so it is bound directly to less's `pshell` shell-escape action instead (`escalate-editor.sh`, with a `^P` extra-string prefix that suppresses the shell-escape's normal "done" prompt so the overlay resumes cleanly).
 - **open-in-viewer** has no goto-file API to call, so it drives the viewer's own keys over the herdr socket: it ensures a `Files` pane exists in the focused tab (opening one via the viewer's action if needed), then sends `f`, types the repo-relative path, and presses Enter; `path:123` follows up with the viewer's `:` goto-line. This is UI-scripting by nature: if the viewer's keymap changes upstream, this action needs a revisit.
+- **recents** has no TTY of its own either (herdr runs every action's command headless), so it opens a second overlay pane (`recents-pick`) just for the fzf pick; the chosen entry is then handed to the SAME `preview` overlay-rendering code (`preview-pane.sh`, `exec`'d in place, not a third pane) so a reopened entry resolves and records exactly like a fresh open.
 - No event hooks, no daemons, nothing runs until you press your key.
 
 ## Limitations

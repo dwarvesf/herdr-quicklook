@@ -40,6 +40,10 @@ CLIP_LINE=""
 if resolve_any_token "$raw"; then
   case "$RESOLVED_MODE" in
     browser)
+      # Opening the browser is a successful open like any other mode (this
+      # sub-goal's Outcome says "every successful open"); record before the
+      # exit. See the matching comment in preview-pane.sh and DECISIONS.md.
+      record_open "$raw"
       url_open "$RESOLVED_TARGET"
       exit 0
       ;;

@@ -42,7 +42,9 @@
 #             scripts/open-preview.sh (a fresh resolve_any_token call there
 #             reproduces the identical RESOLVED_CMD deterministically , safe
 #             for command-mode specifically, see the viewer caveat below).
-#             No handler emits this yet (SG-02/vcs.sh is a stub).
+#             Produced today by vcs.sh (SG-02: bare SHA -> `git show`, `#123`
+#             / PR URL -> `gh pr view`) and dir.sh (SG-04: herdr-file-viewer
+#             absent -> `eza --tree`/`ls -la`).
 #   viewer  - RESOLVED_TARGET is a directory to root the file-viewer at.
 #             dir.sh only emits this mode when herdr-file-viewer is
 #             confirmed installed (else it emits `command` with an
@@ -98,11 +100,92 @@ url_open() {
   fi >/dev/null 2>&1
 }
 
-# record_open <token> -> no-op today (best-effort). SG-07 (recents) fills in
-# the body; both pane scripts already call this at the point a successful
-# open is known, so that sub-goal stays a lib.sh-only change for the body
-# itself (it may still touch the pane scripts' call sites, see DECISIONS.md).
-record_open() { :; }
+# ---- recents (SG-07): a small "last opened" log, read by the `recents`
+# action / recents-pick pane (scripts/recents.sh, scripts/recents-pane.sh).
+# State lives under a proper state dir, NEVER inside a repo working tree,
+# see recents_path_is_safe below.
+
+# RECENTS_MAX: bounded log size (last-N, deduped). Overridable for tests.
+RECENTS_MAX="${QUICKLOOK_RECENTS_MAX:-20}"
+
+# recents_state_dir -> the directory the recents log lives in (not created
+# here). ${XDG_STATE_HOME:-$HOME/.local/state}/herdr-quicklook, per this
+# sub-goal's goal file. Not the plugin config-dir: that would mean shelling
+# out to `herdr plugin config-dir` (an extra process, and a hard runtime
+# dependency on herdr itself) on every single successful open, when the XDG
+# state dir needs nothing more than $HOME.
+recents_state_dir() {
+  printf '%s/herdr-quicklook' "${XDG_STATE_HOME:-$HOME/.local/state}"
+}
+
+# recents_state_file -> the recents log itself.
+recents_state_file() {
+  printf '%s/recents' "$(recents_state_dir)"
+}
+
+# recents_path_is_safe <path> -> rc 0 if no ancestor directory of <path> is
+# a git working tree (a `.git` entry - a directory for a normal repo, a file
+# for a worktree/submodule gitlink). A pure path-walk, no `git` binary
+# required and no dependency on the directory existing yet, so it works
+# before the first `mkdir -p`. This is the hard guard the goal file
+# requires: state must NEVER land inside a repo, however
+# XDG_STATE_HOME/$HOME ends up set on a given machine.
+recents_path_is_safe() {
+  local d
+  d="$(dirname -- "$1")"
+  while [ -n "$d" ] && [ "$d" != "/" ] && [ "$d" != "." ]; do
+    [ -e "$d/.git" ] && return 1
+    d="$(dirname -- "$d")"
+  done
+  return 0
+}
+
+# record_open <token> -> append <token> to the recents log: dedup (an
+# existing occurrence of the same token moves to the front instead of
+# duplicating) and cap at RECENTS_MAX (oldest entries drop off). Best-effort
+# by design (this sub-goal's Quality bar): an empty token, an unsafe path,
+# an unwritable dir, or any write failure is silently swallowed - a
+# recording failure must never block the open it is recording. Atomic:
+# builds the new content in a temp file in the SAME directory, then renames
+# over the real file, so a concurrent reader never observes a half-written
+# log.
+record_open() {
+  local token="$1" file dir tmp
+  [ -z "$token" ] && return 0
+  file="$(recents_state_file)"
+  dir="$(dirname -- "$file")"
+  recents_path_is_safe "$file" || return 0
+  mkdir -p -- "$dir" 2>/dev/null || return 0
+  tmp="$(mktemp "$dir/.recents.XXXXXX" 2>/dev/null)" || return 0
+  if {
+    [ -f "$file" ] && grep -Fxv -- "$token" "$file" 2>/dev/null
+    printf '%s\n' "$token"
+  } | tail -n "$RECENTS_MAX" >"$tmp" 2>/dev/null; then
+    mv -f -- "$tmp" "$file" 2>/dev/null
+  else
+    rm -f -- "$tmp" 2>/dev/null
+  fi
+  return 0
+}
+
+# recents_list -> the recents log, MOST-RECENT-FIRST, one token per line.
+# Missing or empty file: no output, rc 0. A corrupt/unreadable file never
+# crashes the caller (errors are swallowed; worst case is fewer or garbled
+# candidates, never a nonzero exit the caller has to guard against).
+recents_list() {
+  local file
+  file="$(recents_state_file)"
+  [ -f "$file" ] || return 0
+  # Reverse without depending on GNU-only `tac` (not on macOS by default);
+  # this sed idiom is portable to BSD sed too.
+  sed '1!G;h;$!d' "$file" 2>/dev/null
+  return 0
+}
+
+# recents_latest -> the single most-recently-opened token, or empty.
+recents_latest() {
+  recents_list | head -1
+}
 
 # Optional config: QUICKLOOK_ROOTS, colon-separated extra roots to try for
 # relative paths (e.g. the parent directory holding all your repos).
@@ -256,9 +339,15 @@ resolve() {
 
 # Registry order (first match wins): specific-shape kinds before the
 # catch-all. `path` MUST stay last (see the contract comment at the top of
-# this file). `vcs` is still a stub (SG-02 fills in its match_/handle_ body
-# later, one file, no registry-line edit needed); `dir` is real (SG-04).
-HANDLER_KINDS=(github url vcs dir path)
+# this file). `vcs` sits BEFORE `url` (not after, as originally stubbed):
+# one of vcs's shapes is a GitHub PR URL (https://...), which structurally
+# also matches url.sh's generic http(s) predicate via classify_token; if url
+# stayed first it would claim every PR URL as a generic browser-mode open
+# before vcs ever got a look. vcs's other two shapes (bare SHA, `#123`)
+# don't overlap anything, so this reorder is a no-op for them. `dir` is real
+# too (SG-04): it decides viewer vs command mode itself, see the contract
+# comment above.
+HANDLER_KINDS=(github vcs url dir path)
 
 # LIB_DIR: this file's own directory (== scripts/), kept around (not
 # unset) so render_command_in_pager below can find ../lesskey the same way

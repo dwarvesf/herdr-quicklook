@@ -37,3 +37,19 @@ platforms = ["linux", "macos"]
 title = "Open clipboard path in file viewer"
 description = "Open the clipboard's file path inside the herdr-file-viewer pane (requires that plugin)."
 command = ["bash", "scripts/open-in-viewer.sh"]
+
+# The recents picker: an overlay with a real TTY running fzf (same shape as
+# the preview pane, needed for the same reason - see scripts/recents.sh).
+# Opened by the `recents` action below.
+[[panes]]
+id = "recents-pick"
+title = "Recents"
+placement = "overlay"
+command = ["bash", "scripts/recents-pane.sh"]
+
+[[actions]]
+id = "recents"
+platforms = ["linux", "macos"]
+title = "Reopen a recent quicklook"
+description = "Reopen the most recently opened path/URL, or fzf-pick among the last N when fzf is installed."
+command = ["bash", "scripts/recents.sh"]
