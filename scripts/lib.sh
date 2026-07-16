@@ -338,9 +338,15 @@ resolve() {
 
 # Registry order (first match wins): specific-shape kinds before the
 # catch-all. `path` MUST stay last (see the contract comment at the top of
-# this file). vcs/dir are registered now as stubs (SG-02/SG-04 fill in their
-# match_/handle_ bodies later, one file each, no registry-line edit needed).
-HANDLER_KINDS=(github url vcs dir path)
+# this file). `vcs` sits BEFORE `url` (not after, as originally stubbed):
+# one of vcs's shapes is a GitHub PR URL (https://...), which structurally
+# also matches url.sh's generic http(s) predicate via classify_token; if url
+# stayed first it would claim every PR URL as a generic browser-mode open
+# before vcs ever got a look. vcs's other two shapes (bare SHA, `#123`)
+# don't overlap anything, so this reorder is a no-op for them. `dir` is
+# registered now as a stub (SG-04 fills in its match_/handle_ body later,
+# one file, no registry-line edit needed).
+HANDLER_KINDS=(github vcs url dir path)
 
 # LIB_DIR: this file's own directory (== scripts/), kept around (not
 # unset) so render_command_in_pager below can find ../lesskey the same way
