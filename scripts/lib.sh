@@ -20,22 +20,45 @@
 #                           preview-pane.sh additionally tries the bare-name
 #                           fuzzy fallback below).
 #
-# RESOLVED_MODE is one of:
+# RESOLVED_MODE is one of, and BOTH pane scripts act on all four (see their
+# own RESOLVED_MODE case block; this is load-bearing, not aspirational , a
+# handler is free to emit any of these today and get correct behavior):
 #   file    - RESOLVED_TARGET is a local path (RESOLVED_LINE optional);
-#             caller renders/drives it.
+#             caller renders/drives it. Produced today by github.sh, path.sh.
 #   browser - RESOLVED_TARGET is a URL; caller does
-#             `url_open "$RESOLVED_TARGET"`.
-#   viewer  - RESOLVED_TARGET is a directory to root the file-viewer at.
-#             Reserved: no handler emits this yet (SG-04/dir.sh).
+#             `url_open "$RESOLVED_TARGET"`. Produced today by github.sh
+#             (no local checkout), url.sh.
 #   command - RESOLVED_CMD (a bash ARRAY, not a string) is the argv to run;
-#             its output is what the caller shows. A flat string is not
-#             enough here: a command-mode handler runs an external tool
-#             (`git show`, `gh pr view`) against untrusted clipboard input,
-#             so the args must stay a real argv and never get rebuilt from a
-#             flattened string (that would reopen the exact shell-injection
-#             surface the mode exists to avoid). Widened per this sub-goal's
-#             own contingency clause; see DECISIONS.md. Reserved: no handler
-#             emits this yet (SG-02/vcs.sh).
+#             its output is paged for the user. A flat string is not enough
+#             here: a command-mode handler runs an external tool (`git show`,
+#             `gh pr view`) against untrusted clipboard input, so the args
+#             must stay a real argv and never get rebuilt from a flattened
+#             string (that would reopen the exact shell-injection surface
+#             the mode exists to avoid). Widened per this sub-goal's own
+#             contingency clause; see DECISIONS.md. preview-pane.sh runs
+#             RESOLVED_CMD through render_command_in_pager (below) directly
+#             (it has the real TTY); open-in-viewer.sh has no pager of its
+#             own, so it re-invokes the SAME raw token through
+#             scripts/open-preview.sh (a fresh resolve_any_token call there
+#             reproduces the identical RESOLVED_CMD deterministically , safe
+#             for command-mode specifically, see the viewer caveat below).
+#             No handler emits this yet (SG-02/vcs.sh is a stub).
+#   viewer  - RESOLVED_TARGET is a directory to root the file-viewer at.
+#             preview-pane.sh's safe DEGRADE (no handler drives the real
+#             file-viewer socket protocol yet) pages an `eza --tree` /
+#             `ls -la` listing of RESOLVED_TARGET via render_command_in_pager
+#             , the same shape SG-04's own goal file already documents as
+#             its no-viewer-installed fallback. open-in-viewer.sh cannot do
+#             even that (no pager of its own) and cannot safely forward the
+#             raw token the way command-mode does either: path.sh's
+#             resolve() only matches regular files (`-f`), so a directory
+#             token would fail to re-resolve there and silently read as "not
+#             found". It notifies the user and stops instead. Neither arm
+#             ever falls through to file-rendering on a directory ,
+#             the concrete bug this widening exists to prevent. Real
+#             viewer-rooting over the herdr socket is SG-04's own feature;
+#             expect it to replace these degrade bodies. No handler emits
+#             this yet (SG-04/dir.sh is a stub).
 #
 # resolve_any_token <raw> walks HANDLER_KINDS in order and dispatches to the
 # first handler whose match_<kind> accepts the token, returning that
@@ -44,8 +67,14 @@
 # later-added kind's real tokens would never reach their own handler.
 #
 # scripts/preview-pane.sh and scripts/open-in-viewer.sh call ONLY
-# resolve_any_token; they are never edited to add a new kind. Adding a kind
-# = one new scripts/handlers/<kind>.sh + one line in HANDLER_KINDS below.
+# resolve_any_token to CLASSIFY/RESOLVE a token; that side is never edited to
+# add a new kind. Each script's own RESOLVED_MODE case block is where the
+# four modes above render/act; a kind whose handler starts emitting `viewer`
+# or `command` for real (SG-02/SG-04) is expected to refine those bodies ,
+# a disclosed, minor exception to "pane scripts untouched", see HANDOFF.md.
+# Adding a purely additive kind (mode file/browser only) needs zero
+# pane-script edits: one new scripts/handlers/<kind>.sh + one line in
+# HANDLER_KINDS below.
 #
 # scripts/handlers/bare-name.sh is the one documented exception: its fuzzy
 # git-ls-files search + interactive fzf pick is opt-in (match_bare_name
@@ -232,12 +261,28 @@ resolve() {
 # match_/handle_ bodies later, one file each, no registry-line edit needed).
 HANDLER_KINDS=(github url vcs dir path)
 
-_herdr_lib_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-for _herdr_handler in "$_herdr_lib_dir"/handlers/*.sh; do
+# LIB_DIR: this file's own directory (== scripts/), kept around (not
+# unset) so render_command_in_pager below can find ../lesskey the same way
+# the pane scripts locate it from their own script_dir.
+LIB_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+for _herdr_handler in "$LIB_DIR"/handlers/*.sh; do
   # shellcheck disable=SC1090
   [ -f "$_herdr_handler" ] && . "$_herdr_handler"
 done
-unset _herdr_handler _herdr_lib_dir
+unset _herdr_handler
+
+# render_command_in_pager <argv...> -> runs argv, pages its combined
+# stdout+stderr through less (color preserved via -R, so a command that
+# emits ANSI itself, e.g. `git show --color=always`, still highlights).
+# Used for RESOLVED_MODE=command and preview-pane.sh's RESOLVED_MODE=viewer
+# tree-listing degrade (see the contract comment above). Only meaningful
+# from a script with a real TTY (preview-pane.sh); returns the pipeline's
+# exit status.
+render_command_in_pager() {
+  local lesskey_args=()
+  [ -f "$LIB_DIR/../lesskey" ] && lesskey_args=(--lesskey-src="$LIB_DIR/../lesskey")
+  "$@" 2>&1 | less -R "${lesskey_args[@]}"
+}
 
 # resolve_any_token <raw> -> see the handler-registry contract at the top of
 # this file. Sets RESOLVED_TARGET / RESOLVED_LINE / RESOLVED_MODE (and

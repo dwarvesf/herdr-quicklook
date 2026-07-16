@@ -39,10 +39,45 @@ target=""
 CLIP_LINE=""
 if resolve_any_token "$raw"; then
   case "$RESOLVED_MODE" in
-    browser) url_open "$RESOLVED_TARGET"; exit 0 ;;
+    browser)
+      url_open "$RESOLVED_TARGET"
+      exit 0
+      ;;
+    command)
+      # This script has no pager of its own (it only drives OTHER panes over
+      # the herdr socket, see the header comment); command-mode output needs
+      # a real TTY. Re-resolving the SAME raw token in the preview overlay is
+      # safe here specifically: a command-mode token (SHA / #123 / PR URL)
+      # doesn't depend on a filesystem test, so resolve_any_token reproduces
+      # the identical RESOLVED_CMD there deterministically. Dispatch BEFORE
+      # the empty-target guard below: a real command-mode result legitimately
+      # leaves RESOLVED_TARGET empty.
+      if [ "${#RESOLVED_CMD[@]}" -gt 0 ]; then
+        record_open "$raw"
+        exec bash "$script_dir/open-preview.sh" "$raw"
+      fi
+      # RESOLVED_CMD empty is a handler bug; fall through to "not found".
+      ;;
+    viewer)
+      # RESOLVED_TARGET is a directory. Driving the file-viewer at an
+      # arbitrary directory root, or even paging a tree listing, both need a
+      # real pane with a TTY, which this action script does not have. Unlike
+      # command-mode above, forwarding the raw token through
+      # scripts/open-preview.sh is NOT safe here: path.sh's resolve() only
+      # matches regular files (`-f`), so a directory token fails to
+      # re-resolve there and would silently read as "not found". No handler
+      # emits this mode yet (dir.sh is a stub; SG-04 owns the real behavior,
+      # including whichever pane ends up rendering it). Never fall through
+      # to the file-driving code below on a directory target , notify and
+      # stop instead.
+      notify "directory viewer not wired yet: $RESOLVED_TARGET"
+      exit 0
+      ;;
+    *)
+      target="$RESOLVED_TARGET"
+      CLIP_LINE="$RESOLVED_LINE"
+      ;;
   esac
-  target="$RESOLVED_TARGET"
-  CLIP_LINE="$RESOLVED_LINE"
 fi
 [ -z "${target:-}" ] && { notify "not found: $raw"; exit 0; }
 
