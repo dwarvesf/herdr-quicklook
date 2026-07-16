@@ -1,6 +1,16 @@
 # q or Esc-Esc closes the preview. A bare \e binding cannot coexist with
 # arrow keys (they send ESC-prefixed sequences and less fires the single-char
 # binding immediately, verified on less 668), so quit is double-Esc instead.
+#
+# `e` -> $EDITOR: less binds only ONE `visual` slot, already claimed by `o`
+# (escalate to herdr-file-viewer). `e` is bound directly to `pshell` (the
+# `#` shell-escape, prompt-expanded) with an extra string instead: `\020`
+# (^P) suppresses the "done (press RETURN)" prompt shell-escapes normally
+# print, so the overlay resumes exactly like `visual` does. `?lm+%lm. %g`
+# mirrors LESSEDIT's own default expansion (current-line + shell-escaped
+# filename); QUICKLOOK_EDITOR_SCRIPT is exported by preview-pane.sh.
+# Verified against a real less 668 session (PR proof).
 #command
 \e\e quit
 o visual
+e pshell \020"$QUICKLOOK_EDITOR_SCRIPT" ?lm+%lm. %g\n

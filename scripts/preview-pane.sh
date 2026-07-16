@@ -78,6 +78,8 @@ lesskey_args=()
 [ -f "$script_dir/../lesskey" ] && lesskey_args=(--lesskey-src="$script_dir/../lesskey")
 
 export VISUAL="$script_dir/escalate.sh"
+# Read by the lesskey `e` pshell binding (escalate-editor.sh); see lesskey.
+export QUICKLOOK_EDITOR_SCRIPT="$script_dir/escalate-editor.sh"
 if command -v bat >/dev/null 2>&1; then
   export LESSOPEN='|bat --color=always --style=numbers,header %s'
   exec less -R "${lesskey_args[@]}" ${CLIP_LINE:++$CLIP_LINE} "$target"
