@@ -67,6 +67,26 @@ Optional. Create `.env` in the directory `herdr plugin config-dir herdr-quickloo
 QUICKLOOK_ROOTS="$HOME/workspace:$HOME/src"
 ```
 
+## Agent-push (programmatic tokens)
+
+The plugin reads, in priority order: `$QUICKLOOK_TOKEN` env > script argument > clipboard. That gives an agent (or any script) a way to put a file on the human's screen without touching their clipboard:
+
+```sh
+# pop the overlay for a specific file+line
+herdr plugin pane open --plugin herdr-quicklook --entrypoint preview \
+  --placement overlay --focus --env QUICKLOOK_TOKEN="src/handler.go:142"
+```
+
+An empty `QUICKLOOK_TOKEN` is treated as unset; the interactive clipboard flow is unchanged when neither env nor argument is given.
+
+## Development
+
+```sh
+shellcheck -x scripts/*.sh && bats tests/   # brew install shellcheck bats-core
+```
+
+The bats suite sources `scripts/lib.sh` directly (temp git repo + worktree + roots fixture), so it exercises the exact production resolve chain.
+
 ## Demo
 
 ![quick look: copy a path, pop the file at the right line](demo/preview.gif)

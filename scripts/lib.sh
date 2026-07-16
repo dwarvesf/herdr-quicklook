@@ -26,6 +26,16 @@ load_config() {
   [ -n "$dir" ] && [ -f "$dir/.env" ] && . "$dir/.env"
 }
 
+# pick_token [arg] -> the token to open, priority: $QUICKLOOK_TOKEN env (the
+# only channel that crosses `herdr plugin pane open --env`) > first argument
+# (natural CLI/agent shape) > clipboard (interactive default). Empty env = unset.
+pick_token() {
+  local t="${QUICKLOOK_TOKEN:-}"
+  [ -z "$t" ] && t="${1:-}"
+  [ -z "$t" ] && t="$(clip_read)"
+  printf '%s' "$t"
+}
+
 # split "path:123" into CLIP_PATH / CLIP_LINE
 parse_token() {
   CLIP_PATH="$1"
@@ -36,11 +46,19 @@ parse_token() {
   fi
 }
 
-# resolve <path> -> absolute file path on stdout, or rc 1.
+# resolve <path> -> ABSOLUTE file path on stdout, or rc 1.
 # Order: as-is, $PWD, every worktree of the current repo, each QUICKLOOK_ROOTS.
+# Always absolute: a downstream containment check ("is it under the repo root")
+# must compare against absolute roots, so a bare relative hit is joined to $PWD.
 resolve() {
   local p="$1" w r
-  [ -f "$p" ] && { printf '%s' "$p"; return 0; }
+  if [ -f "$p" ]; then
+    case "$p" in
+      /*) printf '%s' "$p" ;;
+      *) printf '%s' "$PWD/$p" ;;
+    esac
+    return 0
+  fi
   [ -f "$PWD/$p" ] && { printf '%s' "$PWD/$p"; return 0; }
   while IFS= read -r w; do
     [ -f "$w/$p" ] && { printf '%s' "$w/$p"; return 0; }

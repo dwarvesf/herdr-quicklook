@@ -25,11 +25,10 @@ if ! "$herdr_bin" plugin action list --plugin herdr-file-viewer >/dev/null 2>&1;
   exec bash "$script_dir/open-preview.sh"
 fi
 
-# Token comes from $1 when given (the quick-look overlay's `o` escalation
-# passes the file it is showing); otherwise from the clipboard.
-raw="${1:-}"
-[ -z "$raw" ] && raw="$(clip_read)"
-[ -z "$raw" ] && { notify "clipboard empty"; exit 0; }
+# Token priority: $QUICKLOOK_TOKEN env > $1 (the overlay's `o` escalation and
+# agent callers pass the file explicitly) > clipboard.
+raw="$(pick_token "${1:-}")"
+[ -z "$raw" ] && { notify "nothing to open (no token, clipboard empty)"; exit 0; }
 
 case "$raw" in
   http://* | https://*) url_open "$raw"; exit 0 ;;
@@ -52,6 +51,13 @@ if [ -z "$root" ] || [[ "$target" != "$root"/* ]]; then
   exit 0
 fi
 rel="${target#"$root"/}"
+
+# $rel is typed into the file-viewer TUI via send-text; a control byte in the
+# filename (e.g. an embedded newline in a maliciously-named file) would inject
+# extra keystrokes into that plugin. Refuse.
+case "$rel" in
+  *[$'\n\r\t']*) notify "unsafe filename (control chars); refusing"; exit 0 ;;
+esac
 
 tab="$(printf '%s' "$focused" | jq -r '.result.pane.tab_id // empty' 2>/dev/null)"
 files_pane() {
