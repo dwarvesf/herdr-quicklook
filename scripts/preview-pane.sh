@@ -24,51 +24,27 @@ raw="$(pick_token "${1:-}")"
 
 target=""
 CLIP_LINE=""
-case "$(classify_token "$raw")" in
-  github)
-    if map_github_url "$raw" && target="$(resolve_github "$GH_REPO" "$GH_REST")"; then
-      CLIP_LINE="$GH_LINE"
-    else
-      # no local checkout matches: the browser is the right place after all
-      url_open "$raw"
-      exit 0
-    fi
-    ;;
-  url)
-    url_open "$raw"
-    exit 0
-    ;;
-  path)
-    parse_token "$raw"
-    target="$(resolve "$CLIP_PATH")" || true
-    ;;
-esac
-
-if [ -z "${target:-}" ]; then
-  root="$(git rev-parse --show-toplevel 2>/dev/null)"
-  if [ -n "$root" ]; then
-    matches="$(git -C "$root" ls-files 2>/dev/null | grep -iF -- "$CLIP_PATH" | head -100)"
-    n="$(printf '%s' "$matches" | grep -c . 2>/dev/null)"
-    if [ "$n" -eq 1 ]; then
-      target="$root/$matches"
-    elif [ "$n" -gt 1 ]; then
-      if command -v fzf >/dev/null 2>&1; then
-        pick="$(printf '%s\n' "$matches" | fzf --prompt="$CLIP_PATH ▸ " --reverse --cycle --height=100%)" || exit 0
-        [ -n "$pick" ] && target="$root/$pick"
-      else
-        # no fzf: list the candidates so the user can copy an exact path and retry
-        printf '%s matches "%s" in this repo (install fzf for an interactive pick):\n\n' "$n" "$CLIP_PATH"
-        printf '%s\n' "$matches"
-        printf '\n'
-        read -r -n1 -p "press any key to close" _ 2>/dev/null || sleep 2
-        exit 0
-      fi
-    fi
-  fi
+if resolve_any_token "$raw"; then
+  case "$RESOLVED_MODE" in
+    browser) url_open "$RESOLVED_TARGET"; exit 0 ;;
+  esac
+  target="$RESOLVED_TARGET"
+  CLIP_LINE="$RESOLVED_LINE"
+else
+  # Only a path-shaped token reaches here (github/url always resolve one way
+  # or another via resolve_any_token): fall back to the interactive
+  # bare-name search over this repo's tracked files.
+  parse_token "$raw"
+  handle_bare_name "$CLIP_PATH" && {
+    target="$RESOLVED_TARGET"
+    CLIP_LINE="$RESOLVED_LINE"
+  }
 fi
 
 [ -z "${target:-}" ] && pause_close "quicklook: not a file I can find: $raw" \
   "(tried as-is, \$PWD, this repo's worktrees, QUICKLOOK_ROOTS, repo filename search)"
+
+record_open "$raw"
 
 # Render with less driving the real FILE (not a bat pipe), so less keeps the
 # filename and its `visual` command works: `o` (or `v`) escalates to the

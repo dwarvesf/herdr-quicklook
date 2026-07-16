@@ -37,22 +37,13 @@ if [ -n "$fcwd" ]; then cd "$fcwd" 2>/dev/null || true; fi
 
 target=""
 CLIP_LINE=""
-case "$(classify_token "$raw")" in
-  github)
-    if map_github_url "$raw" && target="$(resolve_github "$GH_REPO" "$GH_REST")"; then
-      CLIP_LINE="$GH_LINE"
-    else
-      url_open "$raw"
-      exit 0
-    fi
-    ;;
-  url)
-    url_open "$raw"; exit 0 ;;
-  path)
-    parse_token "$raw"
-    target="$(resolve "$CLIP_PATH")" || true
-    ;;
-esac
+if resolve_any_token "$raw"; then
+  case "$RESOLVED_MODE" in
+    browser) url_open "$RESOLVED_TARGET"; exit 0 ;;
+  esac
+  target="$RESOLVED_TARGET"
+  CLIP_LINE="$RESOLVED_LINE"
+fi
 [ -z "${target:-}" ] && { notify "not found: $raw"; exit 0; }
 
 # The viewer roots at the focused pane's repo; outside targets can't show there.
@@ -105,3 +96,5 @@ if [ -n "$CLIP_LINE" ]; then
   "$herdr_bin" pane send-text "$pid" "$CLIP_LINE" >/dev/null 2>&1
   "$herdr_bin" pane send-keys "$pid" Enter >/dev/null 2>&1
 fi
+
+record_open "$raw"
