@@ -28,6 +28,7 @@ A few things that make it more than a pager:
 | `path/file.md:123` | Opens with line 123 highlighted (`:123` jump in the viewer) |
 | a path under one of your `QUICKLOOK_ROOTS` | Resolved against each configured root |
 | `filename.md` (bare, no directory) | Repo-wide search of tracked files: one hit opens; several hits open an fzf pick |
+| `some/dir` (a directory, not a file) | Opens herdr-file-viewer rooted there when installed, else an `eza --tree`/`ls -la` listing in the popup |
 
 Resolution runs top-down: exact paths win before any fuzzy matching, and the first hit stops the chain.
 

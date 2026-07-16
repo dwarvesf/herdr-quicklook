@@ -59,19 +59,21 @@ if resolve_any_token "$raw"; then
       # RESOLVED_CMD empty is a handler bug; fall through to "not found".
       ;;
     viewer)
-      # RESOLVED_TARGET is a directory. Driving the file-viewer at an
-      # arbitrary directory root, or even paging a tree listing, both need a
-      # real pane with a TTY, which this action script does not have. Unlike
-      # command-mode above, forwarding the raw token through
-      # scripts/open-preview.sh is NOT safe here: path.sh's resolve() only
-      # matches regular files (`-f`), so a directory token fails to
-      # re-resolve there and would silently read as "not found". No handler
-      # emits this mode yet (dir.sh is a stub; SG-04 owns the real behavior,
-      # including whichever pane ends up rendering it). Never fall through
-      # to the file-driving code below on a directory target , notify and
-      # stop instead.
-      notify "directory viewer not wired yet: $RESOLVED_TARGET"
-      exit 0
+      # RESOLVED_TARGET is a directory. herdr-file-viewer is confirmed
+      # installed already (the soft-dependency gate at the top of this
+      # script degrades to the preview overlay before we ever reach here
+      # otherwise), so dir.sh always emits `viewer` in this context - reuse
+      # the SAME goto-path send-keys sequence the file case below already
+      # uses and tests (f -> type <repo-relative path> -> Enter) to land the
+      # viewer's cursor on the directory; there is no separate "root at a
+      # directory" verb in the socket protocol. Directories have no line
+      # number, so CLIP_LINE stays empty and the `:N` step below is skipped
+      # naturally. This falls into the SAME containment / control-char
+      # checks below as a file target - a directory outside this repo's
+      # tree still gets "outside this repo's tree: use the preview overlay
+      # instead".
+      target="$RESOLVED_TARGET"
+      CLIP_LINE=""
       ;;
     *)
       target="$RESOLVED_TARGET"

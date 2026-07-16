@@ -46,13 +46,14 @@ if resolve_any_token "$raw"; then
       # argv to run); fall through and treat it like an unresolved token.
       ;;
     viewer)
-      # RESOLVED_TARGET is a directory. No handler drives the real
-      # file-viewer socket protocol yet (SG-04 owns that); never fall
-      # through to the file-render path below on a directory target, that
-      # is the exact `exec less <directory>` bug this arm exists to
-      # prevent. Safe degrade: page a tree/listing of it instead, the same
-      # shape SG-04's own goal file already documents as its no-viewer
-      # fallback.
+      # RESOLVED_TARGET is a directory. This popup has no way to drive
+      # ANOTHER pane's herdr-file-viewer socket (it only has its own TTY, a
+      # pager) - that real rooting happens in open-in-viewer.sh's own viewer
+      # arm instead. Never fall through to the file-render path below on a
+      # directory target, that is the exact `exec less <directory>` bug this
+      # arm exists to prevent. Safe degrade: page a tree/listing of it
+      # instead, the same shape dir.sh falls back to itself when
+      # herdr-file-viewer isn't installed at all (RESOLVED_MODE=command).
       record_open "$raw"
       if command -v eza >/dev/null 2>&1; then
         render_command_in_pager eza --tree "$RESOLVED_TARGET"

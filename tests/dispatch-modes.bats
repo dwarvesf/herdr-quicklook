@@ -4,8 +4,10 @@
 # kit:advisor CRITICAL on PR #7: a mode-unaware pane script would either
 # reject a valid command-mode result on its empty RESOLVED_TARGET, or fall
 # through to `exec less <directory>` for a viewer-mode result). No real
-# handler emits these modes yet (vcs.sh/dir.sh are stubs), so this drops a
-# TEMPORARY test-only handler file into the real scripts/handlers/ directory
+# handler emits `command` yet (vcs.sh is still a stub); dir.sh (SG-04) emits
+# `viewer`/`command` for real now, see tests/handlers-dir.bats for its own
+# coverage. This file still drops a TEMPORARY test-only handler into the real
+# scripts/handlers/ directory
 # for the duration of each test (glob-discovered by lib.sh at source time,
 # same as any real handler) and removes it in teardown , the only way to
 # exercise the full pane-script dispatch as a fresh process, same style as
@@ -132,8 +134,9 @@ teardown() {
   [[ "$output" != *"LESS_ARGS:"*"somedir"* ]]
 }
 
-# ---- open-in-viewer.sh: command / viewer modes never touch the file-viewer
-# send-keys path (which types a token in as if it were a repo-relative FILE)
+# ---- open-in-viewer.sh: command mode never touches the file-viewer
+# send-keys path (which types a token in as if it were a repo-relative FILE);
+# viewer mode (SG-04) reuses that SAME send-keys path on purpose, see below.
 
 @test "open-in-viewer command mode: hands off to the preview overlay, does not send-keys" {
   cat > "$STUB/jq" <<'JQ'
@@ -153,13 +156,30 @@ JQ
   ! grep -q "pane_id" <<<"$output"
 }
 
-@test "open-in-viewer viewer mode: notifies and stops, does not send-keys" {
+@test "open-in-viewer viewer mode: reuses the file case's goto-path send-keys sequence" {
   cat > "$STUB/jq" <<'JQ'
 #!/usr/bin/env bash
 printf '{}'
 JQ
   chmod +x "$STUB/jq"
+  local hlog
+  hlog="$(mktemp)"
+  cat > "$STUB/herdr" <<HERDR
+#!/usr/bin/env bash
+printf '%s\n' "\$*" >> "$hlog"
+exit 0
+HERDR
+  chmod +x "$STUB/herdr"
   export QUICKLOOK_TOKEN="TEST_VIEWER_TOKEN"
   run bash "$VIEWER"
   [ "$status" -eq 0 ]
+  # SG-04's dir.sh only emits `viewer` once herdr-file-viewer is confirmed
+  # installed, so this arm no longer notifies-and-stops (that was the
+  # pre-SG-04 placeholder) - it falls into the SAME containment + send-keys
+  # flow as a file target. This synthetic target ($FIX/myrepo/somedir) is
+  # inside the fixture repo, so it reaches send-keys; the out-of-repo and
+  # real-dir.sh cases are covered in tests/handlers-dir.bats.
+  grep -qF "pane send-keys {} f" "$hlog"
+  grep -qF "pane send-text {} somedir" "$hlog"
+  rm -f "$hlog"
 }
