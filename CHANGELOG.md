@@ -1,5 +1,20 @@
 # Changelog
 
+## 0.2.0 (2026-07-16)
+
+- GitHub blob/raw URLs (`github.com/o/r/blob/<ref>/<path>#L<n>`, `/raw/`,
+  `raw.githubusercontent.com`) now open the LOCAL checkout at the line when one
+  resolves (current repo by name, plain resolve chain, `QUICKLOOK_ROOTS/<repo>`);
+  refs containing `/` are handled by successive splits; unresolvable URLs fall
+  back to the browser. `#L42-L60` ranges keep the start line.
+- Agent-push: token priority is `$QUICKLOOK_TOKEN` env > script argument >
+  clipboard, in both actions; `preview` forwards an argument into the pane via
+  `--env`. Agents can now put a file on screen without touching the clipboard.
+- `resolve` always returns an absolute path (fixes a latent bug where a
+  cwd-relative hit failed open-in-viewer's repo-containment check).
+- bats test suite (`bats tests/`) over the resolve chain, token parsing,
+  classification, and priority; shellcheck + bats documented as the dev loop.
+
 ## 0.1.0 (2026-07-16)
 
 Initial release.

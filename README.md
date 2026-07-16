@@ -20,7 +20,8 @@ pluck the path, pop the file.
 
 | Clipboard content | What happens |
 |---|---|
-| `https://…` / `http://…` | Opens in your default browser |
+| a GitHub **blob/raw URL** (`github.com/o/r/blob/main/src/x.go#L42`) | Opens the file in your **local checkout** at that line when one exists (current repo, worktrees, `QUICKLOOK_ROOTS/<repo>`); otherwise the browser |
+| any other `https://…` / `http://…` | Opens in your default browser |
 | `/absolute/path/file.md` | Preview (or viewer) at that file |
 | `relative/path/file.md` | Resolved against the focused pane's cwd, then its git root |
 | a path from **another worktree** of the same repo | Resolved via `git worktree list`, both directions |
@@ -74,6 +75,35 @@ Optional. Create `.env` in the directory `herdr plugin config-dir herdr-quickloo
 # live under one parent directory.
 QUICKLOOK_ROOTS="$HOME/workspace:$HOME/src"
 ```
+
+## Agent-push (programmatic tokens)
+
+The plugin reads, in priority order: `$QUICKLOOK_TOKEN` env > script argument >
+clipboard. That gives agents (or any script) a way to put a file on the human's
+screen without touching their clipboard:
+
+```sh
+# pop the overlay for a specific file+line
+herdr plugin pane open --plugin herdr-quicklook --entrypoint preview \
+  --placement overlay --focus --env QUICKLOOK_TOKEN="src/handler.go:142"
+
+# or open it inside the file-viewer pane
+bash "$(herdr plugin list --json | jq -r \
+  '.result.plugins[] | select(.plugin_id=="herdr-quicklook") | .plugin_root')/scripts/open-in-viewer.sh" \
+  "src/handler.go:142"
+```
+
+An empty `QUICKLOOK_TOKEN` is treated as unset; the interactive clipboard flow
+is unchanged when neither env nor argument is given.
+
+## Development
+
+```sh
+shellcheck -x scripts/*.sh && bats tests/   # brew install shellcheck bats-core
+```
+
+The bats suite sources `scripts/lib.sh` directly (temp git repo + worktree +
+roots fixture), so it exercises the exact production resolve chain.
 
 ## Demo
 
