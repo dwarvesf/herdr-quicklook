@@ -9,6 +9,12 @@
 
 Born from a daily annoyance: coding agents print file paths all day (`src/api/handler.go:142`), and reviewing one meant leaving the terminal or retyping the path. Pair this with a hint-copy plugin like [herdr-pluck](https://github.com/rmarganti/herdr-pluck) and the whole loop is two keystrokes: pluck the path, pop the file.
 
+A few things that make it more than a pager:
+
+- **A GitHub link opens your local file.** Paste `github.com/org/repo/blob/main/src/x.go#L42` and it opens *your checkout* at line 42, not a browser tab, resolving across worktrees and your other repos.
+- **An agent can put a file on your screen.** Set `QUICKLOOK_TOKEN` and any script or coding agent pops a file into your overlay, no clipboard needed.
+- **Quick look, then commit to it.** Reading in the overlay and want the full tree? One key (`o`) escalates the same file, at the same line, into [herdr-file-viewer](https://github.com/smarzban/herdr-file-viewer).
+
 ## What it opens
 
 | Clipboard content | What happens |
@@ -117,6 +123,7 @@ Everything else is optional, and the plugin degrades instead of failing:
 
 - One token at a time: it reads the clipboard, it does not scan the screen (that is the hint-copy plugin's job).
 - `open-in-viewer` only reaches files inside the focused pane's repo (the viewer roots there); anything outside gets a notification pointing at the preview overlay instead.
+- GitHub-URL resolution matches the URL's `<repo>` against the **current checkout's directory name**. If two unrelated local repos share a directory name it can open the same-named file in the wrong one; a URL for a repo you have no local checkout of falls back to the browser.
 - Windows is untested (clipboard/opener cascades cover macOS + Linux).
 
 ## License
