@@ -1,8 +1,11 @@
 #!/usr/bin/env bash
-# Pane `preview`: runs inside the overlay (real TTY). Reads the clipboard,
-# resolves it, renders with bat (fallback: less). URLs open the browser and
-# the overlay closes itself. Bare filenames search the repo's tracked files
-# (one hit opens, several become an fzf pick). q or Esc-Esc closes.
+# Pane `preview`: runs inside the overlay (real TTY). Takes a token
+# ($QUICKLOOK_TOKEN env > clipboard; the env crosses `plugin pane open --env`,
+# which is how agents push a file onto the screen), resolves it, renders with
+# less (bat as LESSOPEN colorizer). GitHub blob/raw URLs map to the LOCAL
+# checkout when one exists; other URLs open the browser and the overlay closes
+# itself. Bare filenames search the repo's tracked files (one hit opens,
+# several become an fzf pick). q or Esc-Esc closes; o/v escalates.
 set -u
 
 script_dir="$(cd "$(dirname "${BASH_SOURCE[0]:-$0}")" && pwd)"
@@ -17,19 +20,30 @@ pause_close() {
 
 load_config
 
-raw="$(clip_read)"
-[ -z "$raw" ] && pause_close "quicklook: clipboard is empty"
+raw="$(pick_token "${1:-}")"
+[ -z "$raw" ] && pause_close "quicklook: nothing to open (no token, clipboard empty)"
 
-case "$raw" in
-  http://* | https://*)
+target=""
+CLIP_LINE=""
+case "$(classify_token "$raw")" in
+  github)
+    if map_github_url "$raw" && target="$(resolve_github "$GH_REPO" "$GH_REST")"; then
+      CLIP_LINE="$GH_LINE"
+    else
+      # no local checkout matches: the browser is the right place after all
+      url_open "$raw"
+      exit 0
+    fi
+    ;;
+  url)
     url_open "$raw"
     exit 0
     ;;
+  path)
+    parse_token "$raw"
+    target="$(resolve "$CLIP_PATH")" || true
+    ;;
 esac
-
-parse_token "$raw"
-
-target="$(resolve "$CLIP_PATH")"
 
 if [ -z "${target:-}" ]; then
   root="$(git rev-parse --show-toplevel 2>/dev/null)"

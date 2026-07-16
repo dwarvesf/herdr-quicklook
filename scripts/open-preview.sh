@@ -23,4 +23,11 @@ if [ -n "$repo" ] && [ -d "$repo" ]; then
   set -- "$@" --cwd "$repo"
 fi
 
+# Agent-push: a token argument rides into the pane as $QUICKLOOK_TOKEN (env is
+# the only channel that crosses `plugin pane open`; the pane checks it before
+# the clipboard).
+if [ -n "${1:-}" ]; then
+  set -- "$@" --env "QUICKLOOK_TOKEN=$1"
+fi
+
 exec "$herdr_bin" "$@"

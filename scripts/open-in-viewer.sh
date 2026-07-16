@@ -25,24 +25,36 @@ if ! "$herdr_bin" plugin action list --plugin herdr-file-viewer >/dev/null 2>&1;
   exec bash "$script_dir/open-preview.sh"
 fi
 
-# Token comes from $1 when given (the quick-look overlay's `o` escalation
-# passes the file it is showing); otherwise from the clipboard.
-raw="${1:-}"
-[ -z "$raw" ] && raw="$(clip_read)"
-[ -z "$raw" ] && { notify "clipboard empty"; exit 0; }
-
-case "$raw" in
-  http://* | https://*) url_open "$raw"; exit 0 ;;
-esac
-
-parse_token "$raw"
+# Token priority: $QUICKLOOK_TOKEN env > $1 (the overlay's `o` escalation and
+# agent callers pass the file explicitly) > clipboard.
+raw="$(pick_token "${1:-}")"
+[ -z "$raw" ] && { notify "nothing to open (no token, clipboard empty)"; exit 0; }
 
 # Base everything on the focused pane, not this script's own cwd
 focused="$("$herdr_bin" pane current 2>/dev/null)"
 fcwd="$(printf '%s' "$focused" | jq -r '.result.pane.cwd // empty' 2>/dev/null)"
 if [ -n "$fcwd" ]; then cd "$fcwd" 2>/dev/null || true; fi
 
-target="$(resolve "$CLIP_PATH")"
+target=""
+CLIP_LINE=""
+case "$(classify_token "$raw")" in
+  github)
+    if map_github_url "$raw" && target="$(resolve_github "$GH_REPO" "$GH_REST")"; then
+      CLIP_LINE="$GH_LINE"
+    else
+      url_open "$raw"
+      exit 0
+    fi
+    ;;
+  url)
+    url_open "$raw"
+    exit 0
+    ;;
+  path)
+    parse_token "$raw"
+    target="$(resolve "$CLIP_PATH")" || true
+    ;;
+esac
 [ -z "${target:-}" ] && { notify "not found: $raw"; exit 0; }
 
 # The viewer roots at the focused pane's repo; outside targets can't show there.
