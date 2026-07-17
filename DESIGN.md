@@ -6,9 +6,12 @@ file, a browser tab, or a paged command. User-facing behavior lives in
 
 ## Token flow
 
-Every action (`preview`, `open-in-viewer`, `recents`) ends up calling the
-same two functions in `scripts/lib.sh`: `pick_token` to get a raw string,
-`resolve_any_token` to classify and resolve it.
+Every action that OPENS a token (`preview`, `open-in-viewer`, `recents`,
+and `pick` once a candidate is chosen) ends up calling the same two
+functions in `scripts/lib.sh`: `pick_token` to get a raw string,
+`resolve_any_token` to classify and resolve it. `pick` additionally has its
+own scan-time path for finding candidates in the first place - see
+[Pick anywhere](#pick-anywhere) below.
 
 ```mermaid
 flowchart TD
@@ -152,8 +155,8 @@ hand-off does.
 
 ## Panes and actions topology
 
-`herdr-plugin.toml` declares three actions (run by the herdr server with
-**no TTY**) and two overlay panes (each a real TTY):
+`herdr-plugin.toml` declares five actions (run by the herdr server with
+**no TTY**) and three overlay panes (each a real TTY):
 
 ```mermaid
 flowchart LR
@@ -161,15 +164,22 @@ flowchart LR
         A1["preview"]
         A2["open-in-viewer"]
         A3["recents"]
+        A4["pick"]
+        A5["pluck-chain"]
     end
     subgraph Panes["overlay panes (real TTY)"]
         P1["preview pane\n(preview-pane.sh)"]
         P2["recents-pick pane\n(recents-pane.sh)"]
+        P3["pick-pane\n(pick-pane.sh)"]
     end
     A1 -- "plugin pane open" --> P1
     A3 -- "plugin pane open" --> P2
+    A4 -- "plugin pane open" --> P3
     P2 -- "exec, SAME pane/TTY\n(not a third pane)" --> P1
+    P3 -- "exec, SAME pane/TTY\n(not a third pane)" --> P1
     A2 -. "herdr socket:\nsend-keys / send-text\nto another plugin's pane" .-> V["herdr-file-viewer pane\n(a different plugin)"]
+    A5 -. "herdr socket:\nplugin action invoke pluck\n+ clipboard poll" .-> PL["herdr-pluck's own\nhint-overlay tab\n(a different plugin)"]
+    A5 -. "absent, or invoke fails:\nplugin action invoke pick" .-> A4
 ```
 
 `open-in-viewer` and `recents` have no TTY of their own to run interactive
@@ -180,7 +190,83 @@ pane (`recents`) or drives an *existing* pane over the herdr socket
 `exec`s `preview-pane.sh` in the same process/TTY rather than opening a
 third pane, reusing the resolve+render+`record_open` path verbatim means a
 reopened entry bumps to the front of the log exactly like a fresh open,
-with no separate "is this a reopen" bookkeeping.
+with no separate "is this a reopen" bookkeeping. `pick-pane.sh` does the
+same `exec` hand-off to `preview-pane.sh` once a candidate is chosen.
+`pluck-chain` is the one action with no pane of its own: it drives another
+plugin's action (`herdr-pluck`'s `pluck`) over the socket, and on absence
+or failure reroutes into `pick` via that SAME `plugin action invoke`
+primitive rather than a cross-plugin file dependency.
+
+## Pick anywhere
+
+`pick` (`scripts/pick.sh` + `scripts/pick-pane.sh`) is the one action that
+doesn't start from a single clipboard token - it scans everything currently
+rendered on screen and lets you choose.
+
+**The acquisition primitive**: `herdr pane read <pane_id> --source visible
+--format text` (herdr's own socket API) is the only live dependency in the
+whole scan path. `--format text` already strips every ANSI/OSC escape
+sequence before the text reaches the plugin (live-verified against a real
+running session: a pane printing raw SGR color codes came back
+escape-free through `--format text` and with the raw `ESC[...` codes
+intact through `--format ansi`, byte-for-byte diffed); `pick_scan_text`
+also strips them itself in a defensive pass, so any OTHER caller that
+pipes raw/decorated text in stays safe too. See DECISIONS.md for the full
+verification method.
+
+**The action/pane split** (same shape as `recents`/`recents-pick`, needed
+for the same reason: `herdr` runs an action's own command with no TTY, so
+the interactive `fzf` step has to live in a real overlay pane instead):
+
+1. `pick` (action, no TTY) captures the ORIGIN pane id before it does
+   anything else - `herdr pane current` returns the FOCUSED pane, and the
+   instant the `pick-pane` overlay is focused, that call would return the
+   overlay itself, not the pane the user was looking at. Falls back to
+   `$HERDR_PLUGIN_CONTEXT_JSON`'s `.focused_pane_id` field when `pane
+   current` is unavailable - **live-verified** (2026-07-17, against a real
+   `plugin action invoke` context payload) as the correct field name,
+   alongside `.focused_pane_cwd` which the cwd fallback already used. See
+   DECISIONS.md for the full payload.
+2. It also reads the clipboard token, then opens `pick-pane`, forwarding
+   the origin pane id, its cwd, and the clipboard token via `--env`/`--cwd`.
+3. `pick-pane` (pane, real TTY) calls
+   `pick_acquire "$QUICKLOOK_PICK_ORIGIN_PANE"`, the acquisition primitive
+   above piped straight into `pick_scan_text`.
+
+**The scan/rank/count flow**, entirely inside `pick_scan_text`
+(`scripts/lib.sh`), pure text-in/text-out, no live pane or clipboard of its
+own:
+
+```mermaid
+flowchart TD
+    A["herdr pane read --format text"] --> B["_pick_strip_ansi\n(defensive; herdr already strips it)"]
+    B --> C["tokenize every line into spans,\ntrim wrapping/trailing punctuation"]
+    C --> D["dedup: unique span -> bottom-most line-no\n(each span classified ONCE, not once per occurrence)"]
+    D --> E["hoist git state ONCE per scan\n(rev-parse / worktree list / ls-files)"]
+    E --> F["classify each unique span through the\nSAME HANDLER_KINDS walk resolve_any_token uses\n(pure scan-local mirrors, never the live handlers)"]
+    F --> G["rank: path > url > sha > ref > dir > name\ntiebreak: line-no desc, then raw-token asc"]
+    G --> H["pick_scan_text stdout:\n<raw>\\t<kind>\\t<line-no> per candidate"]
+    H --> I["pick_count_header:\nN on screen . A path . B url . ..."]
+```
+
+Why scan-local mirrors and not the real handlers: the real handlers
+(`handle_path`, `handle_dir`, `handle_github`) have side effects (global
+mutation, live `git`/herdr calls per invocation) appropriate for OPENING
+one token, but wrong for classifying every span on a busy screen - see the
+CRITICAL performance fix in DECISIONS.md (an unmirrored first pass measured
+143s on a 500-line screen; the mirrored, hoisted, nameref-based rewrite
+brought that to ~1s). `pick_scan_text` never calls the OPEN-time handlers
+at all; `pick-pane.sh`'s `Enter` still hands the chosen raw token to
+`preview-pane.sh`, which resolves it through the real handler registry
+exactly like every other open.
+
+**Requires bash >= 4.3** (`local -A` associative arrays and `local -n`
+namerefs, both used by the scan for correctness and to keep the hot path
+subprocess-free - see DECISIONS.md). `pick-pane.sh` guards this itself
+(`_pick_require_bash4` in `scripts/lib.sh`) before calling `pick_acquire`,
+printing one honest line instead of the silent "0 on screen" a bare
+`local -A` failure would otherwise produce under `set -u` (this plugin
+runs with no `set -e` anywhere).
 
 ## Recents state
 

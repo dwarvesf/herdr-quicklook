@@ -40,13 +40,13 @@ Resolution runs top-down: exact paths win before any fuzzy matching, and the fir
 herdr plugin install dwarvesf/herdr-quicklook
 ```
 
-Then bind the two actions in `~/.config/herdr/config.toml`:
+Then bind the actions in `~/.config/herdr/config.toml`:
 
 ```toml
-[[keys.command]]              # overlay preview
+[[keys.command]]              # pick anything openable on screen - the unified entry
 key = "prefix+v"
 type = "shell"
-command = "herdr plugin action invoke preview --plugin herdr-quicklook"
+command = "herdr plugin action invoke pick --plugin herdr-quicklook"
 
 [[keys.command]]              # open inside the file-viewer pane (optional)
 key = "prefix+o"
@@ -58,18 +58,31 @@ key = "prefix+shift+v"
 type = "shell"
 command = "herdr plugin action invoke recents --plugin herdr-quicklook"
 
-[[keys.command]]              # pluck a token, then quick-look it - one key
+[[keys.command]]              # pluck a token (needs herdr-pluck), then quick-look it -
+                               # falls back to the same pick overlay above when
+                               # herdr-pluck is absent or its invoke fails
 key = "prefix+shift+y"
 type = "shell"
 command = "herdr plugin action invoke pluck-chain --plugin herdr-quicklook"
-
-[[keys.command]]              # pick anything openable currently on screen
-key = "prefix+shift+p"
-type = "shell"
-command = "herdr plugin action invoke pick --plugin herdr-quicklook"
 ```
 
 Reload with `herdr server reload-config`.
+
+### Migrating from v0.3
+
+`pick` (this release) needs no other plugin, so it replaced `preview` as the
+recommended `prefix+v` binding above:
+
+| Key | v0.3 | v0.5 |
+|---|---|---|
+| `prefix+v` | `preview` - opens the clipboard token directly, no scan | `pick` - lists everything openable on screen, clipboard token preselected as row 1. Same single keypress when the screen is otherwise empty or `fzf` isn't installed (row 1 opens automatically); with `fzf` installed and other tokens on screen, one `Enter` confirms the pick |
+| `prefix+shift+y` (`pluck-chain`) | Needs [herdr-pluck](https://github.com/rmarganti/herdr-pluck) installed; without it, degraded to the plain clipboard flow | Same binding; without herdr-pluck installed (or if its invoke fails), now reroutes straight into the `pick` overlay above instead |
+
+Nothing is removed: `preview` is still a valid action id if you want the old
+clipboard-only, no-scan behavior back on `prefix+v`, and `pick` can just as
+easily live on its own key (e.g. `prefix+shift+p`) instead of replacing
+`preview`. The migration is a `config.toml` edit you make, not a forced
+behavior change from this plugin.
 
 ## Keys in the preview overlay
 
@@ -94,11 +107,13 @@ The log lives outside any git repo, at `${XDG_STATE_HOME:-~/.local/state}/herdr-
 
 Pairs this plugin with [herdr-pluck](https://github.com/rmarganti/herdr-pluck) as one action instead of two keystrokes. Press the binding and herdr-pluck's Vimium-style hint labels appear over every copyable token in the pane; type a hint and the picked token opens in the preview overlay immediately, no separate `prefix+v` needed to consume it.
 
-Mechanically, herdr-pluck's only output channel is the system clipboard (there is no other IPC), so the chain fires the pluck action, polls the clipboard for a change, and forwards whatever lands there straight into the preview overlay via the same `QUICKLOOK_TOKEN` channel [agent-push](#agent-push-programmatic-tokens) uses. Without herdr-pluck installed, the binding degrades to the plain clipboard flow (identical to `preview`) instead of doing nothing.
+Mechanically, herdr-pluck's only output channel is the system clipboard (there is no other IPC), so the chain fires the pluck action, polls the clipboard for a change, and forwards whatever lands there straight into the preview overlay via the same `QUICKLOOK_TOKEN` channel [agent-push](#agent-push-programmatic-tokens) uses. Without herdr-pluck installed - or if herdr-pluck's own invoke fails - the binding reroutes straight into the `pick` overlay below instead of stalling on a clipboard poll that would never resolve.
 
-## Pick anything on screen (`prefix+shift+p`)
+## Pick anything on screen (`prefix+v`)
 
 Lists every openable token currently visible in the pane, ranked by confidence (a resolvable path first, then URLs, commit SHAs, `#refs`, directories, and unique bare filenames last), with a count-by-kind header (`12 on screen · 5 path · 4 url · 2 sha · 1 dir`). If the clipboard already holds a token that resolves, it is preselected as row 1 (labeled `clipboard: <token>`) and deduped out of the on-screen list below it. `Enter` opens the highlighted pick through the same preview overlay as every other open; `Esc` closes without opening anything. With no [`fzf`](https://github.com/junegunn/fzf) installed, the top row opens directly, no interactive step.
+
+Needs bash >= 4.3 in the pane's `PATH` (the scan itself, not the rest of the plugin). macOS ships bash 3.2 at `/bin/bash`; if Homebrew's `bash` isn't ahead of it on `PATH`, the overlay now says so directly (`quicklook: pick needs bash >= 4.3 ... - brew install bash`) instead of silently reporting an empty screen.
 
 ## Configuration
 
@@ -175,30 +190,32 @@ Tapes for every recording live in [demo/](demo/), along with the landmines hit r
 
 ## Requirements
 
-Hard requirements: **herdr >= 0.7.0**, `jq`, and a clipboard reader (`pbpaste` on macOS, `wl-paste` or `xclip` on Linux).
+Hard requirements: **herdr >= 0.7.0**, `jq`, and a clipboard reader (`pbpaste` on macOS, `wl-paste` or `xclip` on Linux). The `pick` action additionally needs **bash >= 4.3** wherever the herdr server resolves `bash` from (macOS's own `/bin/bash` is 3.2; make sure Homebrew's `bash` leads `PATH`, or `brew install bash` if you don't have one yet) - every other action in this plugin runs fine under the system bash.
 
 Everything else is optional, and the plugin degrades instead of failing:
 
 | Dependency | Used for | Without it |
 |---|---|---|
 | [`bat`](https://github.com/sharkdp/bat) | syntax-highlighted preview | plain `less` renders the file |
-| [`fzf`](https://github.com/junegunn/fzf) | picking among multiple bare-filename matches | single matches still open; multiple matches are listed so you can copy an exact path |
+| [`fzf`](https://github.com/junegunn/fzf) | picking among multiple bare-filename matches, and the `pick` overlay's interactive list | single bare-filename matches still open, multiple are listed so you can copy an exact path; `pick`'s top-ranked row (or the resolved clipboard token) opens directly with no interactive step |
 | [herdr-file-viewer](https://github.com/smarzban/herdr-file-viewer) plugin | the `open-in-viewer` action | the action falls back to the preview overlay automatically |
-| [herdr-pluck](https://github.com/rmarganti/herdr-pluck) plugin | the `pluck-chain` action (recommended pairing) | `pluck-chain` degrades to the plain clipboard flow; any other way of copying a path works the same |
+| [herdr-pluck](https://github.com/rmarganti/herdr-pluck) plugin | the `pluck-chain` action (recommended pairing) | `pluck-chain` reroutes into the native `pick` overlay instead of stalling |
 
 ## How it works
 
 - **preview** opens a plugin overlay pane (a real TTY) that reads the clipboard, resolves the token through the [handler registry](DESIGN.md#handler-registry), and renders it per `RESOLVED_MODE`: a `file` opens in `less` (bat as the `LESSOPEN` colorizer), a `browser` URL is handed to `url_open` and the overlay closes, a `command` token (vcs) or `viewer` degrade (a directory without herdr-file-viewer installed) pages its output through `less -R`. Esc-to-quit and the three in-popup shell-escapes ship via a `lesskey` file: `o` escalates via less's single `visual` slot (`$VISUAL` -> `escalate.sh`); `e` and `d` cannot reuse that slot, so `e` is bound to less's `pshell` action (`escalate-editor.sh`) and `d` to its `shell` action (`dirty-diff.sh`), each with a `^P` extra-string prefix that suppresses the shell-escape's normal "done" prompt so the overlay resumes cleanly. See [DESIGN.md](DESIGN.md#the-lesskey-three-slot-map) for why there are only three slots to go around.
 - **open-in-viewer** has no goto-file API to call, so it drives the viewer's own keys over the herdr socket: it ensures a `Files` pane exists in the focused tab (opening one via the viewer's action if needed), then sends `f`, types the repo-relative path, and presses Enter; `path:123` follows up with the viewer's `:` goto-line. A directory token reuses the same goto-path sequence to root the viewer there. This is UI-scripting by nature: if the viewer's keymap changes upstream, this action needs a revisit.
 - **recents** has no TTY of its own either (herdr runs every action's command headless), so it opens a second overlay pane (`recents-pick`) just for the fzf pick; the chosen entry is then handed to the SAME `preview` overlay-rendering code (`preview-pane.sh`, `exec`'d in place, not a third pane) so a reopened entry resolves and records exactly like a fresh open.
-- **pluck-chain** fires herdr-pluck's own `pluck` action (its hint-overlay picker is a separate temporary tab with its own TTY, so this action cannot wait on it directly) and polls the clipboard - herdr-pluck's only output channel - for the pick, then forwards it straight into `preview` via `QUICKLOOK_TOKEN`.
+- **pluck-chain** fires herdr-pluck's own `pluck` action (its hint-overlay picker is a separate temporary tab with its own TTY, so this action cannot wait on it directly) and polls the clipboard - herdr-pluck's only output channel - for the pick, then forwards it straight into `preview` via `QUICKLOOK_TOKEN`. When herdr-pluck is absent, or its own invoke fails, this reroutes into `pick` (below) instead of polling a clipboard that will never change.
+- **pick** captures the origin pane id before opening its own overlay (`pane current` would return the overlay itself once it has focus, not the pane you were looking at), then that overlay pane reads the origin pane's on-screen text (`herdr pane read --format text`), tokenizes it, classifies each span through the SAME [handler registry](DESIGN.md#handler-registry) `resolve_any_token` walks (via pure scan-local mirrors of the real handlers, so scanning stays fast and never mutates any handler's resolve-time globals), and ranks the result. `Enter` hands the chosen raw token to the SAME `preview-pane.sh` rendering code every other open uses.
 - No event hooks, no daemons, nothing runs until you press your key.
 
 Full architecture, the token-flow diagram, and the handler contract for adding a new token kind: [DESIGN.md](DESIGN.md).
 
 ## Limitations
 
-- One token at a time: it reads the clipboard, it does not scan the screen (that is the hint-copy plugin's job).
+- `preview`/`open-in-viewer`/`recents`/`pluck-chain` read one token at a time from the clipboard; only `pick` scans the whole screen.
+- `pick` scans the pane's visible text by default (`QUICKLOOK_PICK_SOURCE=recent` or `recent-unwrapped` opts into scrollback); it does not read inside `less`/`bat`'s own paged output, a nested pane, or anything off-screen.
 - `open-in-viewer` only reaches files inside the focused pane's repo (the viewer roots there); anything outside gets a notification pointing at the preview overlay instead.
 - GitHub-URL resolution matches the URL's `<repo>` against the **current checkout's directory name**. If two unrelated local repos share a directory name it can open the same-named file in the wrong one; a URL for a repo you have no local checkout of falls back to the browser.
 - Windows is untested (clipboard/opener cascades cover macOS + Linux).
