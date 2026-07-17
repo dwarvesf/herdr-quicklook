@@ -20,7 +20,9 @@ A few things that make it more than a pager:
 
 | Clipboard content | What happens |
 |---|---|
-| a GitHub **blob/raw URL** (`github.com/o/r/blob/main/src/x.go#L42`) | Opens the file in your **local checkout** at that line when one exists (current repo, worktrees, `QUICKLOOK_ROOTS/<repo>`); otherwise the browser |
+| a GitHub / GitLab / Bitbucket **blob or raw URL** (`github.com/o/r/blob/main/x.go#L42`, `gitlab.com/o/r/-/blob/main/x.go#L42`, `bitbucket.org/o/r/src/main/x.go#lines-42`, `raw.githubusercontent.com/…`) | Opens the file in your **local checkout** at that line when one exists (current repo, worktrees, `QUICKLOOK_ROOTS/<repo>`); otherwise the browser |
+| a bare commit **SHA** (7-40 hex chars) | `git show` for that commit, paged in the popup |
+| `#123`, or a GitHub **PR URL** (`github.com/o/r/pull/123`) | `gh pr view`, paged in the popup |
 | any other `https://…` / `http://…` | Opens in your default browser |
 | `/absolute/path/file.md` | Preview (or viewer) at that file |
 | `relative/path/file.md` | Resolved against the focused pane's cwd, then its git root |
@@ -30,7 +32,7 @@ A few things that make it more than a pager:
 | `filename.md` (bare, no directory) | Repo-wide search of tracked files: one hit opens; several hits open an fzf pick |
 | `some/dir` (a directory, not a file) | Opens herdr-file-viewer rooted there when installed, else an `eza --tree`/`ls -la` listing in the popup |
 
-Resolution runs top-down: exact paths win before any fuzzy matching, and the first hit stops the chain.
+Resolution runs top-down: exact paths win before any fuzzy matching, and the first hit stops the chain. See [DESIGN.md](DESIGN.md) for how a token kind maps to its handler.
 
 ## Install
 
@@ -66,6 +68,7 @@ Reload with `herdr server reload-config`.
 | `q` or `Esc Esc` | Close the overlay (a bare Esc cannot coexist with arrow-key scrolling in less, so quit is double-Esc) |
 | `o` (or `v`) | **Escalate**: close the overlay and open this file, at the same line, in the herdr-file-viewer pane (when that plugin is installed) |
 | `e` | **Edit**: open this file, at the same line, in `$EDITOR` (config-overridable, default `zed --wait`); the overlay resumes when the editor exits |
+| `d` | **Diff**: open a nested pager on `git diff` for this file (delta-colored if installed, else git's own color); press `d` again (or `q`) to close it and resume the file view. A clean file just prints a no-changes notice |
 | `/`, `n`, `N` | Search inside the file |
 | arrows / PgUp / PgDn | Scroll |
 
@@ -114,6 +117,22 @@ shellcheck -x scripts/*.sh && bats tests/   # brew install shellcheck bats-core
 
 The bats suite sources `scripts/lib.sh` directly (temp git repo + worktree + roots fixture), so it exercises the exact production resolve chain.
 
+## Release
+
+Maintainer-only, run by hand, no CI trigger:
+
+```sh
+./scripts/release.sh 0.3.0
+```
+
+One command: sanity checks (clean tree, on `main`, shellcheck + bats green, tag
+doesn't already exist), bumps `herdr-plugin.toml`'s version, moves
+`CHANGELOG.md`'s `## Unreleased` section into a dated `## 0.3.0 (…)` section,
+commits `chore(release): v0.3.0`, tags it, pushes commit + tag, and cuts a
+GitHub release (`gh release create`) with that changelog section as the notes
+body. Refuses to run against a dirty tree, a non-`main` branch, or an
+already-tagged version.
+
 ## Demo
 
 ![quick look: copy a path, pop the file at the right line](demo/preview.gif)
@@ -135,10 +154,12 @@ Everything else is optional, and the plugin degrades instead of failing:
 
 ## How it works
 
-- **preview** opens a plugin overlay pane (a real TTY) that reads the clipboard, resolves the token, and renders it with `less` (bat as the `LESSOPEN` colorizer). Esc-to-quit ships via a `lesskey` file. `o` escalates via less's single `visual` slot (`$VISUAL` -> `escalate.sh`); `e` cannot reuse that slot, so it is bound directly to less's `pshell` shell-escape action instead (`escalate-editor.sh`, with a `^P` extra-string prefix that suppresses the shell-escape's normal "done" prompt so the overlay resumes cleanly).
-- **open-in-viewer** has no goto-file API to call, so it drives the viewer's own keys over the herdr socket: it ensures a `Files` pane exists in the focused tab (opening one via the viewer's action if needed), then sends `f`, types the repo-relative path, and presses Enter; `path:123` follows up with the viewer's `:` goto-line. This is UI-scripting by nature: if the viewer's keymap changes upstream, this action needs a revisit.
+- **preview** opens a plugin overlay pane (a real TTY) that reads the clipboard, resolves the token through the [handler registry](DESIGN.md#handler-registry), and renders it per `RESOLVED_MODE`: a `file` opens in `less` (bat as the `LESSOPEN` colorizer), a `browser` URL is handed to `url_open` and the overlay closes, a `command` token (vcs) or `viewer` degrade (a directory without herdr-file-viewer installed) pages its output through `less -R`. Esc-to-quit and the three in-popup shell-escapes ship via a `lesskey` file: `o` escalates via less's single `visual` slot (`$VISUAL` -> `escalate.sh`); `e` and `d` cannot reuse that slot, so `e` is bound to less's `pshell` action (`escalate-editor.sh`) and `d` to its `shell` action (`dirty-diff.sh`), each with a `^P` extra-string prefix that suppresses the shell-escape's normal "done" prompt so the overlay resumes cleanly. See [DESIGN.md](DESIGN.md#the-lesskey-three-slot-map) for why there are only three slots to go around.
+- **open-in-viewer** has no goto-file API to call, so it drives the viewer's own keys over the herdr socket: it ensures a `Files` pane exists in the focused tab (opening one via the viewer's action if needed), then sends `f`, types the repo-relative path, and presses Enter; `path:123` follows up with the viewer's `:` goto-line. A directory token reuses the same goto-path sequence to root the viewer there. This is UI-scripting by nature: if the viewer's keymap changes upstream, this action needs a revisit.
 - **recents** has no TTY of its own either (herdr runs every action's command headless), so it opens a second overlay pane (`recents-pick`) just for the fzf pick; the chosen entry is then handed to the SAME `preview` overlay-rendering code (`preview-pane.sh`, `exec`'d in place, not a third pane) so a reopened entry resolves and records exactly like a fresh open.
 - No event hooks, no daemons, nothing runs until you press your key.
+
+Full architecture, the token-flow diagram, and the handler contract for adding a new token kind: [DESIGN.md](DESIGN.md).
 
 ## Limitations
 
