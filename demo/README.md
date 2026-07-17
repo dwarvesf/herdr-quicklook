@@ -1,10 +1,11 @@
 # demo/
 
-Five GIFs, recorded from a real herdr session with [vhs](https://github.com/charmbracelet/vhs),
+Six GIFs, recorded from a real herdr session with [vhs](https://github.com/charmbracelet/vhs),
 covering every main use case:
 
 | GIF | Shows |
 |---|---|
+| `linkify.gif` | `prefix+shift+l` opens the link overlay over real pane output; an SGR Ctrl+click opens a bare path locally, closing the preview returns to the link list, and a second Ctrl+click routes the original GitHub blob URL into the local checkout |
 | `tokens-tour.gif` | Every token kind in one pass: a plain path, a GitHub blob URL (opens the local file), a bare commit SHA (`git show`), a `#123` PR reference (`gh pr view`), a directory (`eza --tree`) |
 | `overlay-keys-tour.gif` | The three in-overlay keys: `d` (dirty-diff toggle), `e` (edit in `$EDITOR`), `o` (escalate to herdr-file-viewer) |
 | `recents.gif` | `prefix+shift+v`: fzf-pick an older entry, proving the reopen bumps it back to the front |
@@ -16,6 +17,8 @@ covering every main use case:
 ```sh
 git clone <this repo> /private/tmp/demo/herdr-quicklook   # NOT /tmp/... (see below)
 cd /private/tmp/demo/herdr-quicklook
+vhs demo/linkify.tape           # writes demo/linkify.gif
+gifsicle -O3 --colors 256 demo/linkify.gif -o demo/linkify.optimized.gif && mv demo/linkify.optimized.gif demo/linkify.gif
 vhs demo/tokens-tour.tape        # writes demo/tokens-tour.gif
 vhs demo/recents.tape            # writes demo/recents.gif
 vhs demo/pluck-full-flow.tape    # writes demo/pluck-full-flow.gif (needs herdr-pluck)
@@ -61,6 +64,17 @@ the tape file's own directory - always `cd` into the checkout first.
   SERVER process inherits them, and every pane it spawns inherits them in turn. Same
   reasoning applies to `LANG`/`LC_ALL` (needed for `eza --tree`'s box-drawing glyphs to
   render instead of raw UTF-8 byte escapes).
+- **VHS has no mouse command.** `linkify.tape` composes each real Ctrl+left-click
+  as SGR-1006 bytes: `Ctrl+[` emits ESC, then a 1ms `Type` emits the mouse body
+  with Ctrl's modifier bit set. The coordinates are pinned to that tape's
+  1400x800 / 15px grid; changing its dimensions or moving the demo rows requires
+  recapturing the grid and updating the two coordinates. The exact sequences were
+  first driven against the same TUI through localterm's PTY API and verified to
+  open the intended OSC-8 and direct URL cells before recording.
+- **`linkify.tape` creates an isolated native keybinding.** Its hidden setup starts
+  from `herdr --default-config`, appends only `prefix+shift+l` as a
+  `plugin_action`, and launches a fresh named session with that temp config. It
+  never reads or mutates the recorder's normal herdr config.
 - **Re-pressing `prefix+v` a second time in one vhs-driven session did not reliably
   reopen the preview overlay** - confirmed the identical keystroke delivered correctly
   every time via `herdr pane send-keys <pane> v` over the socket API, so this is a
@@ -98,7 +112,12 @@ the tape file's own directory - always `cd` into the checkout first.
   the exact path a user with only herdr-quicklook installed hits every time. The
   toast ("herdr-pluck failed to open; opening the pick-anywhere overlay") is real
   herdr notification output, not staged text.
-- **verified**: one-dark theme (both takes), main take shows a genuinely busy pane
+- **`linkify.gif` verified**: one-dark theme; exactly three real candidates;
+  underlined OSC-8 labels; the bare `scripts/linkify-pane.sh:30` Ctrl+click opens
+  at the target line; `q` returns to the same link overlay; the original GitHub
+  blob URL Ctrl+click opens local `scripts/lib.sh` at `#L225`. No internal path
+  beyond `/private/tmp/demo-linkify/herdr-quicklook`; no username or client data.
+- **`pick-anywhere.gif` verified**: one-dark theme (both takes), main take shows a genuinely busy pane
   (3 real commit SHAs via `git --no-pager log`, real repo file/dir names via `ls`, a
   real URL); this take's count header renders `18 on screen · 8 path · 1 url · 3
   sha · 3 dir · 3 name` (what THIS specific recording's busy pane produced, not a

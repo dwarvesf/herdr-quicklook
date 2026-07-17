@@ -189,6 +189,10 @@ already-tagged version.
 
 ## Demo
 
+**Ctrl+click bare paths without an upstream change** - `prefix+shift+l` snapshots the focused pane into a link overlay; a real Ctrl+click opens `scripts/linkify-pane.sh:30` locally, closing the preview returns to the link list, and the original GitHub blob URL Ctrl+clicks straight into the local checkout too:
+
+![linkify: bare pane paths become OSC-8 links, Ctrl-click opens a local preview, and repository URLs route through quicklook directly](demo/linkify.gif)
+
 **Pick anything on screen** - `prefix+v` on a busy pane (real commits, `ls`, a URL) opens the ranked, count-headered pick list; a pick opens in the preview overlay. Plus the negative control: an empty pane and an empty clipboard yield the honest "nothing openable on screen" instead of a crash:
 
 ![pick anywhere: prefix+v scans a busy pane, shows the count header, opens a pick in the preview overlay; then the negative control, an empty pane yields the honest empty-state message](demo/pick-anywhere.gif)
