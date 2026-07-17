@@ -53,3 +53,10 @@ platforms = ["linux", "macos"]
 title = "Reopen a recent quicklook"
 description = "Reopen the most recently opened path/URL, or fzf-pick among the last N when fzf is installed."
 command = ["bash", "scripts/recents.sh"]
+
+[[actions]]
+id = "pluck-chain"
+platforms = ["linux", "macos"]
+title = "Pluck a token, then quick-look it"
+description = "Show herdr-pluck's hint overlay; on pick, open the token immediately in the preview overlay, no extra keypress. Falls back to the plain clipboard flow when herdr-pluck is not installed."
+command = ["bash", "scripts/pluck-chain.sh"]
