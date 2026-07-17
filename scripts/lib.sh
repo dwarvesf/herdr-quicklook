@@ -353,6 +353,13 @@ HANDLER_KINDS=(github vcs url dir path)
 # unset) so render_command_in_pager below can find ../lesskey the same way
 # the pane scripts locate it from their own script_dir.
 LIB_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+
+# herdr's server-spawned panes carry no login env, so less falls back to a
+# non-UTF-8 charset and prints multibyte characters as raw bytes (<E2><86><92>
+# for a plain arrow). Force UTF-8 for every pager/render path that sources
+# this file; an explicit user locale still wins.
+export LESSCHARSET="${LESSCHARSET:-utf-8}"
+[ -n "${LANG:-}" ] || export LANG=en_US.UTF-8
 for _herdr_handler in "$LIB_DIR"/handlers/*.sh; do
   # shellcheck disable=SC1090
   [ -f "$_herdr_handler" ] && . "$_herdr_handler"
