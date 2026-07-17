@@ -30,12 +30,6 @@ pause_close() {
   exit 0
 }
 
-# Runtime guard: pick_acquire (below) pipes through pick_scan_text/
-# pick_count_header, which need bash >= 4.3 (see _pick_require_bash4 in
-# lib.sh). Checked here, before either is called, so a too-old bash gets
-# one honest line instead of a silently wrong "0 on screen".
-bash4_msg="$(_pick_require_bash4)" || pause_close "$bash4_msg"
-
 # fzf row shape: <raw-token>\t<display label> - a hidden raw column plus
 # the shown label (--delimiter/--with-nth below), so a labeled clipboard
 # row still carries its real token through to Enter.

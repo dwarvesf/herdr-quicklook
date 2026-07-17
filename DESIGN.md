@@ -13,27 +13,50 @@ functions in `scripts/lib.sh`: `pick_token` to get a raw string,
 own scan-time path for finding candidates in the first place - see
 [Pick anywhere](#pick-anywhere) below.
 
-```mermaid
-flowchart TD
-    A["$QUICKLOOK_TOKEN env / script arg / clipboard"] --> B["pick_token()"]
-    B --> C["resolve_any_token(raw)"]
-    C --> D{"walk HANDLER_KINDS\ngithub -> vcs -> url -> dir -> path"}
-    D -->|"match_github"| H1["github.sh\n(GitHub / GitLab / Bitbucket blob URLs)"]
-    D -->|"match_vcs"| H2["vcs.sh\n(SHA / #123 / PR URL)"]
-    D -->|"match_url"| H3["url.sh\n(any other http(s)://)"]
-    D -->|"match_dir"| H4["dir.sh\n(a directory, not a file)"]
-    D -->|"match_path (catch-all)"| H5["path.sh\n(filesystem path, optional :line)"]
-    H1 --> R["RESOLVED_TARGET / RESOLVED_LINE /\nRESOLVED_MODE / RESOLVED_CMD"]
-    H2 --> R
-    H3 --> R
-    H4 --> R
-    H5 --> R
-    R --> S{"pane script's RESOLVED_MODE case"}
-    S -->|"file"| T1["less renders the file\n(bat as LESSOPEN)"]
-    S -->|"browser"| T2["url_open() -> default browser"]
-    S -->|"command"| T3["render_command_in_pager RESOLVED_CMD\n(git show / gh pr view / eza --tree)"]
-    S -->|"viewer"| T4["herdr-file-viewer pane,\nor an eza/ls tree degrade"]
-    C -->|"rc 1: no handler matched\n(preview-pane.sh only)"| U["handle_bare_name()\nfuzzy git-ls-files + fzf pick"]
+```
+$QUICKLOOK_TOKEN env / script arg / clipboard
+                │
+                ▼
+          pick_token()
+                │
+                ▼
+     resolve_any_token(raw)
+                │
+                ▼
+  walk HANDLER_KINDS: github -> vcs -> url -> dir -> path
+                │
+    ┌───────────┼────────────┬────────────┬──────────────────┐
+    ▼           ▼            ▼            ▼                  ▼
+match_github  match_vcs    match_url    match_dir     match_path (catch-all)
+    │           │            │            │                  │
+    ▼           ▼            ▼            ▼                  ▼
+github.sh     vcs.sh       url.sh       dir.sh            path.sh
+(GitHub /     (SHA /       (any other   (a directory,     (filesystem path,
+ GitLab /      #123 /       http(s)://)  not a file)        optional :line)
+ Bitbucket     PR URL)
+ blob URLs)
+    │           │            │            │                  │
+    └───────────┴────────────┴────────────┴──────────────────┘
+                              │
+                              ▼
+          RESOLVED_TARGET / RESOLVED_LINE / RESOLVED_MODE / RESOLVED_CMD
+                              │
+                              ▼
+              pane script's RESOLVED_MODE case
+                              │
+      ┌───────────────┬───────────────────┬────────────────────┐
+      ▼                ▼                   ▼                    ▼
+    file            browser             command               viewer
+  less renders    url_open() ->     render_command_in_pager  herdr-file-viewer
+  the file (bat    default browser  RESOLVED_CMD              pane, or an
+  as LESSOPEN)                      (git show / gh pr view /  eza/ls tree
+                                     eza --tree)                degrade
+
+  resolve_any_token rc 1: no handler matched (preview-pane.sh only)
+                              │
+                              ▼
+                     handle_bare_name()
+              fuzzy git-ls-files + fzf pick
 ```
 
 `resolve_any_token` returns 1 only when a `path`-shaped token's `resolve()`
@@ -158,28 +181,23 @@ hand-off does.
 `herdr-plugin.toml` declares five actions (run by the herdr server with
 **no TTY**) and three overlay panes (each a real TTY):
 
-```mermaid
-flowchart LR
-    subgraph Actions["actions (no TTY)"]
-        A1["preview"]
-        A2["open-in-viewer"]
-        A3["recents"]
-        A4["pick"]
-        A5["pluck-chain"]
-    end
-    subgraph Panes["overlay panes (real TTY)"]
-        P1["preview pane\n(preview-pane.sh)"]
-        P2["recents-pick pane\n(recents-pane.sh)"]
-        P3["pick-pane\n(pick-pane.sh)"]
-    end
-    A1 -- "plugin pane open" --> P1
-    A3 -- "plugin pane open" --> P2
-    A4 -- "plugin pane open" --> P3
-    P2 -- "exec, SAME pane/TTY\n(not a third pane)" --> P1
-    P3 -- "exec, SAME pane/TTY\n(not a third pane)" --> P1
-    A2 -. "herdr socket:\nsend-keys / send-text\nto another plugin's pane" .-> V["herdr-file-viewer pane\n(a different plugin)"]
-    A5 -. "herdr socket:\nplugin action invoke pluck\n+ clipboard poll" .-> PL["herdr-pluck's own\nhint-overlay tab\n(a different plugin)"]
-    A5 -. "absent, or invoke fails:\nplugin action invoke pick" .-> A4
+```
+Actions (no TTY)                        Overlay panes (real TTY)
+
+preview ───────────plugin pane open────▶ preview pane (preview-pane.sh)
+                                                  ▲
+recents ───────────plugin pane open────▶ recents-pick pane (recents-pane.sh)
+                                            │
+                                            └─ exec, SAME pane/TTY (not a third pane) ─┘
+
+pick ───────────────plugin pane open───▶ pick-pane (pick-pane.sh)
+                                            │
+                                            └─ exec, SAME pane/TTY (not a third pane) ──▶ preview pane (above)
+
+open-in-viewer ·····herdr socket: send-keys / send-text·····▶ herdr-file-viewer pane (a different plugin)
+
+pluck-chain ········herdr socket: plugin action invoke pluck + clipboard poll·····▶ herdr-pluck's own hint-overlay tab (a different plugin)
+            ········absent, or invoke fails: plugin action invoke pick···········▶ pick (loops back into the action above)
 ```
 
 `open-in-viewer` and `recents` have no TTY of their own to run interactive
@@ -237,16 +255,36 @@ the interactive `fzf` step has to live in a real overlay pane instead):
 (`scripts/lib.sh`), pure text-in/text-out, no live pane or clipboard of its
 own:
 
-```mermaid
-flowchart TD
-    A["herdr pane read --format text"] --> B["_pick_strip_ansi\n(defensive; herdr already strips it)"]
-    B --> C["tokenize every line into spans,\ntrim wrapping/trailing punctuation"]
-    C --> D["dedup: unique span -> bottom-most line-no\n(each span classified ONCE, not once per occurrence)"]
-    D --> E["hoist git state ONCE per scan\n(rev-parse / worktree list / ls-files)"]
-    E --> F["classify each unique span through the\nSAME HANDLER_KINDS walk resolve_any_token uses\n(pure scan-local mirrors, never the live handlers)"]
-    F --> G["rank: path > url > sha > ref > dir > name\ntiebreak: line-no desc, then raw-token asc"]
-    G --> H["pick_scan_text stdout:\n<raw>\\t<kind>\\t<line-no> per candidate"]
-    H --> I["pick_count_header:\nN on screen . A path . B url . ..."]
+```
+herdr pane read --format text
+              │
+              ▼
+_pick_strip_ansi (defensive; herdr already strips it)
+              │
+              ▼
+tokenize every line into spans, trim wrapping/trailing punctuation   ─┐
+              │                                                       │ one awk
+              ▼                                                       │ process
+dedup: unique span -> bottom-most line-no                            ─┘ (Pass 1)
+(each span classified ONCE, not once per occurrence)
+              │
+              ▼
+hoist git state ONCE per scan (rev-parse / worktree list / ls-files)
+              │
+              ▼
+classify each unique span through the SAME HANDLER_KINDS walk        ─┐ bash,
+resolve_any_token uses (pure scan-local mirrors, never the            │ zero-fork
+live handlers)                                                        ─┘ per span
+              │
+              ▼
+rank: path > url > sha > ref > dir > name                            ─┐ awk + sort
+tiebreak: line-no desc, then raw-token asc                            ─┘ (Pass 3)
+              │
+              ▼
+pick_scan_text stdout: <raw>\t<kind>\t<line-no> per candidate
+              │
+              ▼
+pick_count_header: N on screen . A path . B url . ...
 ```
 
 Why scan-local mirrors and not the real handlers: the real handlers
@@ -254,19 +292,21 @@ Why scan-local mirrors and not the real handlers: the real handlers
 mutation, live `git`/herdr calls per invocation) appropriate for OPENING
 one token, but wrong for classifying every span on a busy screen - see the
 CRITICAL performance fix in DECISIONS.md (an unmirrored first pass measured
-143s on a 500-line screen; the mirrored, hoisted, nameref-based rewrite
-brought that to ~1s). `pick_scan_text` never calls the OPEN-time handlers
-at all; `pick-pane.sh`'s `Enter` still hands the chosen raw token to
+143s on a 500-line screen; the mirrored, hoisted rewrite brought that to
+~1s). `pick_scan_text` never calls the OPEN-time handlers at all;
+`pick-pane.sh`'s `Enter` still hands the chosen raw token to
 `preview-pane.sh`, which resolves it through the real handler registry
 exactly like every other open.
 
-**Requires bash >= 4.3** (`local -A` associative arrays and `local -n`
-namerefs, both used by the scan for correctness and to keep the hot path
-subprocess-free - see DECISIONS.md). `pick-pane.sh` guards this itself
-(`_pick_require_bash4` in `scripts/lib.sh`) before calling `pick_acquire`,
-printing one honest line instead of the silent "0 on screen" a bare
-`local -A` failure would otherwise produce under `set -u` (this plugin
-runs with no `set -e` anywhere).
+**Runs on any bash, including macOS's system `/bin/bash` (3.2).** The
+tokenize/trim/dedup pass and the final tier-rank/sort are a single awk
+process each rather than a bash loop; the one remaining per-span bash step
+(classification, which needs the filesystem-aware scan-local mirrors above)
+writes its result to a fixed-name global instead of a `local -n` outvar, so
+there is no subprocess per span on any bash version. This superseded an
+earlier `local -A`/`local -n`-based implementation that needed bash >= 4.3
+and a runtime version guard; see DECISIONS.md (ops-toolkit) for the
+rewrite and the measured before/after on both a modern bash and bash 3.2.
 
 ## Recents state
 

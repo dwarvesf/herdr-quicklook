@@ -356,38 +356,155 @@ TXT
   [ "$elapsed" -lt 5 ]
 }
 
-# ---- bash>=4 guard (SG-04 catch): pick_scan_text/pick_count_header use
-# `local -A`/`local -n`, bash 4.3+. $BASH_VERSINFO is a readonly bash
-# builtin, so it can't be stubbed to simulate an old shell while this bats
-# run is itself under a modern bash - _pick_bash_version_message takes the
-# version as plain arguments instead, so it's fully testable. ----
+# ---- bash 3.2 compatibility (gate-review rewrite): pick_scan_text/
+# pick_count_header used to need bash >= 4.3 (`local -A`/`local -n`); the
+# scan is now awk (dedup/trim/rank) + zero-fork bash (classify via a fixed
+# global, not a nameref), so it runs correctly on ANY bash >= 3.2 including
+# macOS's own /bin/bash. These tests drive the real /bin/bash on this Mac
+# (bash 3.2.57), not just the modern bash bats itself runs under - a
+# regression that only breaks under 3.2 (e.g. a stray `${var,,}`) would
+# pass every OTHER test in this file and only show up here. Each test
+# writes a small script file (so $FIX/$LIB interpolate in the OUTER,
+# modern-bash test before /bin/bash ever sees the script - no quoting
+# gymnastics inside a `bash -c '...'` string) and runs it via `run
+# /bin/bash "$script"`. ----
 
-@test "_pick_bash_version_message: bash 3.2 (macOS system bash) fails with the honest one-line fix" {
-  run _pick_bash_version_message 3 2
-  [ "$status" -eq 1 ]
-  [ "$output" = "quicklook: pick needs bash >= 4.3 (this shell is bash 3.2) - brew install bash" ]
-}
-
-@test "_pick_bash_version_message: bash 4.2 (local -A but no local -n) still fails" {
-  run _pick_bash_version_message 4 2
-  [ "$status" -eq 1 ]
-  [[ "$output" == *"bash >= 4.3"* ]]
-}
-
-@test "_pick_bash_version_message: bash 4.3 (the exact minimum) passes with empty output" {
-  run _pick_bash_version_message 4 3
+@test "sanity: /bin/bash on this host really is bash 3.2, not silently aliased to a modern bash" {
+  run /bin/bash -c 'printf "%s.%s" "${BASH_VERSINFO[0]}" "${BASH_VERSINFO[1]}"'
+  echo "/bin/bash reports bash ${output}" >&3
   [ "$status" -eq 0 ]
-  [ -z "$output" ]
 }
 
-@test "_pick_bash_version_message: bash 5.x passes with empty output" {
-  run _pick_bash_version_message 5 1
+@test "pick_scan_text: full multi-kind ranking under real /bin/bash (bash 3.2) matches the modern-bash result exactly" {
+  local script
+  script="$(mktemp)"
+  cat >"$script" <<SCRIPT
+set -u
+cd "$FIX/repo" || exit 1
+. "$LIB"
+pick_scan_text
+SCRIPT
+  run /bin/bash "$script" <<'TXT'
+check the widget module
+the sub directory has more
+see issue #42 for context
+commit abc1234def is relevant
+see https://example.com/a/b for docs
+open sub/inrepo.md now
+TXT
   [ "$status" -eq 0 ]
-  [ -z "$output" ]
+  local -a lines=()
+  while IFS= read -r l; do lines+=("$l"); done <<<"$output"
+  [ "${#lines[@]}" -eq 6 ]
+  [[ "${lines[0]}" == $'sub/inrepo.md\tpath\t6' ]]
+  [[ "${lines[1]}" == $'https://example.com/a/b\turl\t5' ]]
+  [[ "${lines[2]}" == $'abc1234def\tsha\t4' ]]
+  [[ "${lines[3]}" == $'#42\tref\t3' ]]
+  [[ "${lines[4]}" == $'sub\tdir\t2' ]]
+  [[ "${lines[5]}" == $'widget\tname\t1' ]]
 }
 
-@test "_pick_require_bash4: passes silently on the bats-driving interpreter (this suite already assumes bash >= 4, per every other test in this file)" {
-  run _pick_require_bash4
+@test "pick_scan_text: dedup + punctuation-trim under real /bin/bash (bash 3.2)" {
+  local script
+  script="$(mktemp)"
+  cat >"$script" <<SCRIPT
+set -u
+cd "$FIX/repo" || exit 1
+. "$LIB"
+pick_scan_text
+SCRIPT
+  run /bin/bash "$script" <<'TXT'
+see (sub/inrepo.md) once
+now see "sub/inrepo.md".
+TXT
   [ "$status" -eq 0 ]
-  [ -z "$output" ]
+  [ "$output" = "$(printf 'sub/inrepo.md\tpath\t2')" ]
+}
+
+@test "pick_count_header under real /bin/bash (bash 3.2): correct aggregation" {
+  local script
+  script="$(mktemp)"
+  cat >"$script" <<SCRIPT
+set -u
+cd "$FIX/repo" || exit 1
+. "$LIB"
+pick_scan_text | pick_count_header
+SCRIPT
+  run /bin/bash "$script" <<'TXT'
+check sub/inrepo.md and https://example.com/a/b
+see abc1234def and #42
+look at sub
+TXT
+  [ "$status" -eq 0 ]
+  [ "$output" = '5 on screen · 1 path · 1 url · 1 sha · 1 ref · 1 dir' ]
+}
+
+@test "pick_scan_text: a bare filename that fuzzy-resolves works under real /bin/bash (bash 3.2) - the former \${var,,} bad-substitution site" {
+  local script
+  script="$(mktemp)"
+  cat >"$script" <<SCRIPT
+set -u
+cd "$FIX/repo" || exit 1
+. "$LIB"
+pick_scan_text
+SCRIPT
+  run /bin/bash "$script" <<<'check the widget module'
+  [ "$status" -eq 0 ]
+  [ "$output" = "$(printf 'widget\tname\t1')" ]
+}
+
+@test "pick_scan_text: perf tripwire (500-line screen) also holds under real /bin/bash (bash 3.2), generous 8s bound" {
+  local fixture script i start end elapsed
+  fixture="$(mktemp)"
+  for i in $(seq 1 500); do
+    if ((i % 5 == 0)); then
+      printf 'line %d: see sub/inrepo.md and https://example.com/a/b and abc1234def\n' "$i"
+    else
+      printf 'just some ordinary prose line number %d with nothing special in it at all\n' "$i"
+    fi
+  done >"$fixture"
+  script="$(mktemp)"
+  cat >"$script" <<SCRIPT
+set -u
+cd "$FIX/repo" || exit 1
+. "$LIB"
+pick_scan_text < "$fixture"
+SCRIPT
+  start=$(date +%s)
+  run /bin/bash "$script"
+  end=$(date +%s)
+  elapsed=$((end - start))
+  echo "elapsed=${elapsed}s (bound: <8s, /bin/bash 3.2)" >&3
+  [ "$status" -eq 0 ]
+  [ "$elapsed" -lt 8 ]
+}
+
+# ---- no-cap clarity: there is no candidate cap anywhere in the scan/pick
+# path - a busy screen with 100+ distinct openable tokens must yield ALL of
+# them, not a truncated top-N. ----
+
+@test "pick_scan_text: 100+ distinct tokens all appear in the output, no cap or truncation (anti-truncation guard)" {
+  local i name
+  local -a names=()
+  for i in $(seq -w 1 120); do
+    name="tok${i}.md"
+    printf 'x\n' >"$FIX/repo/$name"
+    names+=("$name")
+  done
+  git -C "$FIX/repo" add -A
+  git -C "$FIX/repo" -c user.email=t@t -c user.name=t commit -qm "120 distinct tokens"
+
+  run pick_scan_text < <(printf '%s\n' "${names[@]}")
+  [ "$status" -eq 0 ]
+  local -a lines=()
+  while IFS= read -r l; do lines+=("$l"); done <<<"$output"
+  [ "${#lines[@]}" -eq 120 ]
+
+  # spot-check the first and last token both made it through, each as kind path.
+  [[ "$output" == *$'\n'"${names[0]}"$'\t''path'* || "$output" == "${names[0]}"$'\t''path'* ]]
+  [[ "$output" == *"${names[119]}"$'\t''path'* ]]
+
+  local header
+  header="$(pick_scan_text < <(printf '%s\n' "${names[@]}") | pick_count_header)"
+  [ "$header" = "120 on screen · 120 path" ]
 }

@@ -100,8 +100,10 @@ the tape file's own directory - always `cd` into the checkout first.
   herdr notification output, not staged text.
 - **verified**: one-dark theme (both takes), main take shows a genuinely busy pane
   (3 real commit SHAs via `git --no-pager log`, real repo file/dir names via `ls`, a
-  real URL), the count header renders (`18 on screen · 8 path · 1 url · 3 sha · 3
-  dir · 3 name`), a real pick (`LICENSE`) opens in the preview overlay; negative
-  control shows the honest `quicklook: nothing openable on screen` on a cleared
-  pane with an empty clipboard. No internal paths beyond the scratch clone's own
-  `/private/tmp/demo/...` directory name; no client/Dwarves data.
+  real URL); this take's count header renders `18 on screen · 8 path · 1 url · 3
+  sha · 3 dir · 3 name` (what THIS specific recording's busy pane produced, not a
+  general capacity figure - `pick` has no cap), and a real pick (`LICENSE`) opens
+  in the preview overlay; negative control shows the honest `quicklook: nothing
+  openable on screen` on a cleared pane with an empty clipboard. No internal paths
+  beyond the scratch clone's own `/private/tmp/demo/...` directory name; no
+  client/Dwarves data.

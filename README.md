@@ -68,21 +68,10 @@ command = "herdr plugin action invoke pluck-chain --plugin herdr-quicklook"
 
 Reload with `herdr server reload-config`.
 
-### Migrating from v0.3
-
-`pick` (this release) needs no other plugin, so it replaced `preview` as the
-recommended `prefix+v` binding above:
-
-| Key | v0.3 | v0.5 |
-|---|---|---|
-| `prefix+v` | `preview` - opens the clipboard token directly, no scan | `pick` - lists everything openable on screen, clipboard token preselected as row 1. Same single keypress when the screen is otherwise empty or `fzf` isn't installed (row 1 opens automatically); with `fzf` installed and other tokens on screen, one `Enter` confirms the pick |
-| `prefix+shift+y` (`pluck-chain`) | Needs [herdr-pluck](https://github.com/rmarganti/herdr-pluck) installed; without it, degraded to the plain clipboard flow | Same binding; without herdr-pluck installed (or if its invoke fails), now reroutes straight into the `pick` overlay above instead |
-
-Nothing is removed: `preview` is still a valid action id if you want the old
-clipboard-only, no-scan behavior back on `prefix+v`, and `pick` can just as
-easily live on its own key (e.g. `prefix+shift+p`) instead of replacing
-`preview`. The migration is a `config.toml` edit you make, not a forced
-behavior change from this plugin.
+`pick` needs no other plugin, so it is the recommended `prefix+v` binding
+above; `preview` (opens the clipboard token directly, no scan) is still a
+valid action id if you'd rather bind that directly instead, and `pick` can
+just as easily live on its own key (e.g. `prefix+shift+p`) alongside it.
 
 ## Keys in the preview overlay
 
@@ -111,9 +100,7 @@ Mechanically, herdr-pluck's only output channel is the system clipboard (there i
 
 ## Pick anything on screen (`prefix+v`)
 
-Lists every openable token currently visible in the pane, ranked by confidence (a resolvable path first, then URLs, commit SHAs, `#refs`, directories, and unique bare filenames last), with a count-by-kind header (`12 on screen · 5 path · 4 url · 2 sha · 1 dir`). If the clipboard already holds a token that resolves, it is preselected as row 1 (labeled `clipboard: <token>`) and deduped out of the on-screen list below it. `Enter` opens the highlighted pick through the same preview overlay as every other open; `Esc` closes without opening anything. With no [`fzf`](https://github.com/junegunn/fzf) installed, the top row opens directly, no interactive step.
-
-Needs bash >= 4.3 in the pane's `PATH` (the scan itself, not the rest of the plugin). macOS ships bash 3.2 at `/bin/bash`; if Homebrew's `bash` isn't ahead of it on `PATH`, the overlay now says so directly (`quicklook: pick needs bash >= 4.3 ... - brew install bash`) instead of silently reporting an empty screen.
+Lists every openable token currently visible in the pane, ranked by confidence (a resolvable path first, then URLs, commit SHAs, `#refs`, directories, and unique bare filenames last), with a count-by-kind header (e.g. `N on screen · A path · B url · C sha · D dir`, listing only the kinds actually present). Every openable token currently visible is counted and listed; there is no cap. If the clipboard already holds a token that resolves, it is preselected as row 1 (labeled `clipboard: <token>`) and deduped out of the on-screen list below it. `Enter` opens the highlighted pick through the same preview overlay as every other open; `Esc` closes without opening anything. With no [`fzf`](https://github.com/junegunn/fzf) installed, the top row opens directly, no interactive step.
 
 ## Configuration
 
@@ -194,7 +181,7 @@ Tapes for every recording live in [demo/](demo/), along with the landmines hit r
 
 ## Requirements
 
-Hard requirements: **herdr >= 0.7.0**, `jq`, and a clipboard reader (`pbpaste` on macOS, `wl-paste` or `xclip` on Linux). The `pick` action additionally needs **bash >= 4.3** wherever the herdr server resolves `bash` from (macOS's own `/bin/bash` is 3.2; make sure Homebrew's `bash` leads `PATH`, or `brew install bash` if you don't have one yet) - every other action in this plugin runs fine under the system bash.
+Hard requirements: **herdr >= 0.7.0**, `jq`, and a clipboard reader (`pbpaste` on macOS, `wl-paste` or `xclip` on Linux). Every action, including `pick`, runs fine under the system bash - macOS's own `/bin/bash` (3.2) is fully supported, no Homebrew `bash` required.
 
 Everything else is optional, and the plugin degrades instead of failing:
 
