@@ -54,6 +54,19 @@ title = "Reopen a recent quicklook"
 description = "Reopen the most recently opened path/URL, or fzf-pick among the last N when fzf is installed."
 command = ["bash", "scripts/recents.sh"]
 
+[[panes]]
+id = "pick-pane"
+title = "Pick"
+placement = "overlay"
+command = ["bash", "scripts/pick-pane.sh"]
+
+[[actions]]
+id = "pick"
+platforms = ["linux", "macos"]
+title = "Pick anything openable on screen"
+description = "List every openable token currently on screen (path, URL, SHA, #ref, dir, filename), clipboard-preselected when it resolves; Enter opens the pick in the preview overlay."
+command = ["bash", "scripts/pick.sh"]
+
 [[actions]]
 id = "pluck-chain"
 platforms = ["linux", "macos"]
