@@ -166,6 +166,18 @@ TXT
   [[ "${lines[1]}" == $'top.md\tpath\t1' ]]
 }
 
+@test "pick_scan_text: same tier AND same line-no falls to a deterministic THIRD tiebreak (raw-token lexicographic ascending)" {
+  # two DIFFERENT real files, both kind=path, on the SAME line - without a
+  # tertiary key the order would depend on bash associative-array
+  # iteration (unspecified), not on anything the caller can predict.
+  printf 'x\n' >"$FIX/repo/afile.md"
+  printf 'x\n' >"$FIX/repo/bfile.md"
+  git -C "$FIX/repo" add -A
+  git -C "$FIX/repo" -c user.email=t@t -c user.name=t commit -qm more
+  run pick_scan_text <<<'bfile.md afile.md'
+  [ "$output" = "$(printf 'afile.md\tpath\t1\nbfile.md\tpath\t1')" ]
+}
+
 # ---- classification REUSES HANDLER_KINDS, not a hardcoded copy ----
 
 @test "pick_scan_text: reuses the LIVE HANDLER_KINDS array (a synthetic front-registered handler wins, proving no separate regex zoo)" {
@@ -278,4 +290,68 @@ SH
   export QUICKLOOK_PICK_SOURCE="recent"
   pick_acquire "wG:pP" >/dev/null
   grep -q -- '--source recent' "$ARGV_LOG"
+}
+
+# ---- purity: pick_scan_text mutates no global (post-review MAJOR fix) ----
+
+@test "pick_scan_text: never mutates CLIP_PATH/CLIP_LINE - a caller's in-flight values survive a scan untouched" {
+  CLIP_PATH="SENTINEL_PATH"
+  CLIP_LINE="SENTINEL_LINE"
+  # a path-shaped span used to run parse_token (a global-setting side
+  # effect) via handle_path; the rewrite never calls handle_path at all.
+  pick_scan_text <<<'sub/inrepo.md' >/dev/null
+  [ "$CLIP_PATH" = "SENTINEL_PATH" ]
+  [ "$CLIP_LINE" = "SENTINEL_LINE" ]
+}
+
+@test "pick_scan_text: never mutates RESOLVED_TARGET/RESOLVED_MODE - a caller's in-flight resolve state survives a scan untouched" {
+  RESOLVED_TARGET="SENTINEL_TARGET"
+  RESOLVED_MODE="SENTINEL_MODE"
+  # exercises the github/vcs/dir/path/name branches in one screen - none of
+  # them call handle_github/handle_vcs/handle_dir/handle_path/
+  # handle_bare_name any more (see the PURITY note in lib.sh).
+  pick_scan_text <<'TXT' >/dev/null
+open sub/inrepo.md and https://gitlab.com/org/repo/-/blob/main/sub/inrepo.md
+commit abc1234def and the sub directory and widget
+TXT
+  [ "$RESOLVED_TARGET" = "SENTINEL_TARGET" ]
+  [ "$RESOLVED_MODE" = "SENTINEL_MODE" ]
+}
+
+# ---- ANSI/OSC defense: a decorated screen still classifies correctly ----
+
+@test "pick_scan_text: ANSI SGR color codes around a path/URL are stripped and classified correctly" {
+  # real ESC bytes (\x1b), not the literal text "\x1b" - matches what a
+  # colorizing tool (ls --color, git, grep --color) actually emits.
+  run pick_scan_text <<< $'open \x1b[32msub/inrepo.md\x1b[0m or \x1b[1;34mhttps://example.com/a/b\x1b[0m'
+  [ "$output" = "$(printf 'sub/inrepo.md\tpath\t1\nhttps://example.com/a/b\turl\t1')" ]
+}
+
+@test "pick_scan_text: an OSC terminal-title sequence is stripped and does not corrupt the surrounding tokens" {
+  run pick_scan_text <<< $'\x1b]0;my title\x07open sub/inrepo.md now'
+  [ "$output" = "$(printf 'sub/inrepo.md\tpath\t1')" ]
+}
+
+# ---- perf tripwire (CRITICAL post-review fix): dedup-before-classify +
+# once-per-scan repo-state hoisting, not once-per-span subprocess fan-out.
+# Generous 5s bound on a 500-line screen - well clear of the intended
+# <1s steady state, but tight enough to catch an O(n·subprocess)
+# regression without flaking on a loaded CI box. ----
+
+@test "pick_scan_text: a ~500-line busy screen scans well under the 5s perf tripwire" {
+  local fixture i
+  fixture="$(mktemp)"
+  for i in $(seq 1 500); do
+    if ((i % 5 == 0)); then
+      printf 'line %d: see sub/inrepo.md and https://example.com/a/b and abc1234def\n' "$i"
+    else
+      printf 'just some ordinary prose line number %d with nothing special in it at all\n' "$i"
+    fi
+  done >"$fixture"
+  SECONDS=0
+  run pick_scan_text < "$fixture"
+  local elapsed=$SECONDS
+  echo "elapsed=${elapsed}s (bound: <5s)" >&3
+  [ "$status" -eq 0 ]
+  [ "$elapsed" -lt 5 ]
 }
