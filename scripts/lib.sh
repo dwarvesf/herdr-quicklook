@@ -398,3 +398,536 @@ resolve_any_token() {
   done
   return 1
 }
+
+# -----------------------------------------------------------------------
+# pick-anywhere scan (v0.5, SG-01): pick_scan_text / pick_count_header /
+# pick_acquire, plus the action/pane wiring contract Wave 2 (SG-02, SG-03)
+# builds against.
+#
+# pick_scan_text (pure core, the whole serializer): reads pane TEXT on
+# stdin, emits the ranked, deduped candidate list on stdout, one candidate
+# per line, TAB-delimited:
+#   <raw-token>\t<kind>\t<line-no>
+# <kind> is one of path url sha ref dir name (sha+ref are the two vcs
+# shapes, kept distinct only for pick_count_header's count-by-kind
+# header).
+#
+# Classification REUSES the handler registry above - never a new regex
+# zoo - for every CHEAP, subprocess-free shape check (match_github,
+# match_vcs, match_url, match_path's classify_token, and the pure URL
+# mappers map_github_url/map_gitlab_url/map_bitbucket_url). The kind is
+# keyed on which handler claims the span (walking the SAME live
+# HANDLER_KINDS array resolve_any_token uses, not a hardcoded copy):
+#   github -> resolves to a local file  -> path
+#   github -> no local checkout         -> url  (same bucket as any
+#                                                 generic URL - github.sh's
+#                                                 own handle_github never
+#                                                 treats this as a miss)
+#   vcs    -> shape matches _VCS_SHA_RE (vcs.sh's own pattern, reused
+#             directly, not re-derived)               -> sha
+#   vcs    -> otherwise (a #ref or a PR URL, both dispatch to `gh pr
+#             view`)                                  -> ref
+#   url    -> (always)                                -> url
+#   dir    -> resolves to a real directory              -> dir
+#   path   -> resolves to a real file                   -> path
+#   path   -> unresolved, but a UNIQUE bare-name hit (the same
+#             case-insensitive substring rule bare-name.sh uses)
+#                                                        -> name
+#   anything else                                       -> dropped, not
+#                                                          a candidate
+# match_path always returns 0 (the catch-all - see the contract at the
+# top of this file), so `path` as a KIND is asserted by RESOLUTION
+# success, never by match_path alone.
+#
+# PERFORMANCE (fixed post-review, see DECISIONS.md "SG-01 CRITICAL fix"):
+# the FIRST implementation classified every raw OCCURRENCE of every span,
+# and each dir/path/name check forked its own `git worktree list`/`git
+# rev-parse`/`git ls-files` - O(spans x subprocesses), measured 13.5s on a
+# normal 40x15 screen and 1m54s on 500 lines. Fixed two ways:
+#   1. Spans are DEDUPED FIRST (one line-tracking pass over the whole
+#      screen), THEN each UNIQUE span is classified exactly once -
+#      classification cost no longer scales with repeat occurrences.
+#   2. Every dir/path/github/name check that would otherwise fork `git` is
+#      answered by a SCAN-LOCAL PURE PREDICATE (_pick_resolve_local,
+#      _pick_resolve_dir_local, _pick_resolve_github_local,
+#      _pick_bare_name_hit_local) built against THREE pieces of repo state
+#      hoisted ONCE PER SCAN, not once per span: `git rev-parse
+#      --show-toplevel`, `git worktree list --porcelain`, `git ls-files`.
+#      These predicates mirror resolve()/`_resolve_dir()`/resolve_github()
+#      exactly, just reading the hoisted data instead of re-invoking git;
+#      the shipped handlers (handle_path/handle_dir/handle_github/
+#      handle_bare_name) are still what OPENING a token runs through
+#      (preview-pane.sh, unchanged) - only the SCAN's own classification
+#      pass uses the hoisted-data versions, and it documents the pairing
+#      right where each predicate is defined below. A useful side effect:
+#      since the scan no longer calls handle_path/handle_dir/handle_github
+#      /handle_bare_name at all, it never touches RESOLVED_TARGET/
+#      RESOLVED_LINE/RESOLVED_MODE/RESOLVED_CMD/CLIP_PATH/CLIP_LINE either
+#      - see the purity note below.
+#
+# PURITY: pick_scan_text never mutates a global. It does not call
+# parse_token, handle_path, handle_dir, handle_github, handle_vcs, or
+# handle_bare_name, so none of CLIP_PATH/CLIP_LINE/RESOLVED_TARGET/
+# RESOLVED_LINE/RESOLVED_MODE/RESOLVED_CMD are touched by a scan - a
+# caller's own in-flight state (e.g. mid-resolve in another script) is
+# never clobbered by scanning. (GH_REPO/GH_REST/GH_LINE ARE still set as a
+# side effect of calling map_github_url/map_gitlab_url/map_bitbucket_url -
+# the SAME pre-existing globals github.sh's own handle_github already
+# sets on every normal github-URL open, not a new leak this scan
+# introduces.)
+#
+# ANSI/OSC DEFENSE: the whole screen is passed through _pick_strip_ansi
+# ONCE (a single sed pass, not per line/span) before tokenizing, stripping
+# CSI (`ESC [ ... letter`, e.g. SGR color codes) and OSC (`ESC ] ... BEL`,
+# e.g. terminal title sequences) escape sequences. Live-verified
+# 2026-07-17 against a real herdr pane (`herdr pane run` printed raw ANSI
+# color codes, then `herdr pane read --format text` vs `--format ansi`
+# were diffed byte-for-byte): `--format text` - what pick_acquire already
+# requests - ALREADY strips every escape sequence before pick_scan_text
+# ever sees the text. So this strip is a defensive no-op on the
+# pick_acquire path specifically, but it protects any OTHER caller that
+# pipes raw/ANSI-decorated text into pick_scan_text directly (a bats
+# fixture, a future integration) - see DECISIONS.md for the full finding.
+#
+# Dedup: the SAME raw token seen more than once keeps only the occurrence
+# CLOSEST TO THE BOTTOM (the largest line-no) - a plain top-to-bottom walk
+# that overwrites its dedup-map entry on every repeat gets this right
+# with no extra bookkeeping.
+#
+# Rank: confidence tier, highest first - path (resolves to a real file) >
+# url > sha > ref > dir > name. Tiebreak WITHIN a tier: larger line-no
+# first (closer to the bottom = the most recent output); a THIRD tiebreak,
+# the raw token itself (lexicographic ascending), makes the final order
+# fully deterministic when two different tokens of the same kind land on
+# the exact same line (no more relying on bash associative-array
+# iteration order for that case).
+#
+# pick_count_header: given pick_scan_text's stdout on stdin, emits the
+# one-line affordance `N on screen · A path · B url · C sha · D ref · E
+# dir · F name`, listing only the non-zero kinds in that fixed order,
+# N = total candidates.
+#
+# pick_acquire [pane_id]: the ONE live-dependency wrapper. Runs
+# `"$herdr_bin" pane read "$pane_id" --source "${QUICKLOOK_PICK_SOURCE:-
+# visible}" --format text` and pipes the result into pick_scan_text.
+# pane_id defaults to $QUICKLOOK_PICK_ORIGIN_PANE; empty -> best-effort
+# `herdr pane current | jq -r '.result.pane.pane_id'`. This is the only
+# function in this section that needs a stubbed herdr in bats - everything
+# else is the pure core, fixture-text/fixture-file testable, no live pane.
+#
+# ---- The action/pane wiring contract (pinned for SG-02 / SG-03) ----
+# Action id `pick` -> scripts/pick.sh (no TTY, mirrors scripts/recents.sh):
+#   1. captures the origin pane id BEFORE opening the overlay
+#      (`herdr pane current | jq -r '.result.pane.pane_id'` - once the
+#      pick-pane overlay is focused, `pane current` returns the OVERLAY,
+#      not the origin the user was in);
+#   2. reads the clipboard token (pick_token / clip_read);
+#   3. opens the `pick-pane` overlay, forwarding
+#      `--env QUICKLOOK_PICK_ORIGIN_PANE=<id>` (+ `--cwd <origin cwd>` +
+#      `--env QUICKLOOK_PICK_CLIP=<clip>` when a clipboard value exists).
+# Pane id `pick-pane` -> scripts/pick-pane.sh (real TTY, mirrors
+# scripts/recents-pane.sh):
+#   4. `pick_acquire "$QUICKLOOK_PICK_ORIGIN_PANE"` -> the candidate list;
+#   5. builds the clipboard-first fzf list (row 1 = the clipboard token
+#      IF it resolves, deduped out of the on-screen rows below it) +
+#      `pick_count_header`'s output as the fzf `--header`;
+#   6. Enter -> `export QUICKLOOK_TOKEN=<raw>; exec bash preview-pane.sh`
+#      (the SAME open path recents-pane.sh already reuses - resolve +
+#      render + record_open, zero new open code);
+#   7. Esc -> close, nothing opened; zero candidates and no resolvable
+#      clipboard -> an honest empty state, never a crash.
+# Confidence-tier order + tiebreak: as above (path > url > sha > ref >
+# dir > name; within a tier, larger line-no first, then raw-token
+# lexicographic ascending).
+# -----------------------------------------------------------------------
+
+# _pick_trim_span <span> <outvar> -> writes <span> into the CALLER's
+# <outvar> (a nameref, no stdout/command-substitution) with wrapping
+# punctuation (matched quotes/parens/brackets/braces/backticks/angle
+# brackets) and trailing `:,;.` stripped, in whichever order applies - the
+# two passes alternate until neither changes anything, so a sentence-final
+# period OUTSIDE a quoted path ("src/f.md".) and one trapped INSIDE a
+# wrapper (src/f.md.)) both come off. The trailing-punct pass can never
+# eat into a real file extension: it only ever removes from the rightmost
+# position and stops the instant that position is not one of `:,;.` (e.g.
+# "lib.sh." -> "lib.sh", stopping at "h" - the ".sh" extension is
+# untouched).
+#
+# nameref, not `printf`+`$(...)`, is deliberate: pick_scan_text calls this
+# once per RAW span (before dedup), and bash forks a real subshell for
+# EVERY command substitution even when the command is a pure bash function
+# with zero external commands inside it (measured: 6500 command-sub calls
+# = ~2s of pure fork overhead vs ~0s for the equivalent nameref calls) -
+# see the CRITICAL fix round 2 in DECISIONS.md. This was the dominant cost
+# left after hoisting the git calls; the tokenizer runs on every raw span,
+# not just the deduped ones, so it is the hottest path in the scan.
+_pick_trim_span() {
+  local -n _pts_out="$2"
+  local s="$1" prev
+  while true; do
+    prev="$s"
+    while [ -n "$s" ]; do
+      case "${s: -1}" in
+        : | , | ';' | .) s="${s%?}" ;;
+        *) break ;;
+      esac
+    done
+    case "$s" in
+      '"'?*'"') s="${s#\"}"; s="${s%\"}" ;;
+      "'"?*"'") s="${s#\'}"; s="${s%\'}" ;;
+      '('?*')') s="${s#\(}"; s="${s%\)}" ;;
+      '['?*']') s="${s#\[}"; s="${s%\]}" ;;
+      '{'?*'}') s="${s#\{}"; s="${s%\}}" ;;
+      '<'?*'>') s="${s#<}"; s="${s%>}" ;;
+      '`'?*'`') s="${s#\`}"; s="${s%\`}" ;;
+    esac
+    [ "$s" = "$prev" ] && break
+  done
+  _pts_out="$s"
+}
+
+# _pick_strip_ansi -> reads stdin, writes stdout with every CSI (`ESC [
+# ... letter`) and OSC (`ESC ] ... BEL`) escape sequence removed, in ONE
+# sed pass over the whole screen (never per line/span - see the
+# PERFORMANCE note above). Defensive: see the ANSI/OSC DEFENSE note above
+# for the live-verified finding that herdr's own `--format text` already
+# does this.
+_pick_strip_ansi() {
+  sed -E $'s/\x1b\\[[0-9;]*[a-zA-Z]//g; s/\x1b\\][^\x07]*\x07//g'
+}
+
+# _pick_cut_from_field <rest> <i> -> the same result as `cut -d/ -f<i>-`
+# (fields i..end of a '/'-delimited string, rejoined by '/'), in pure bash
+# - no subprocess. _pick_resolve_github_local tries up to 4 splits per
+# span (mirroring resolve_github's own i=2..5 loop); forking `cut` per
+# split per span would reintroduce the same per-span subprocess cost this
+# whole section exists to eliminate.
+_pick_cut_from_field() {
+  local rest="$1" i="$2" start out j
+  local -a parts=()
+  IFS='/' read -ra parts <<<"$rest"
+  start=$((i - 1))
+  [ "$start" -ge "${#parts[@]}" ] && return 0
+  out="${parts[$start]}"
+  for ((j = start + 1; j < ${#parts[@]}; j++)); do
+    out="$out/${parts[$j]}"
+  done
+  printf '%s' "$out"
+}
+
+# _pick_resolve_local <path> -> ABSOLUTE file path on stdout, rc 0/1. A
+# subprocess-free mirror of resolve() (as-is, $PWD, every worktree, each
+# QUICKLOOK_ROOTS) that reads this scan's HOISTED _PICK_WORKTREES array
+# instead of re-running `git worktree list` - see pick_scan_text, which
+# sets _PICK_WORKTREES once per scan and is the only intended caller (bash
+# dynamic scoping makes it visible here without passing it explicitly).
+_pick_resolve_local() {
+  local p="$1" w r
+  if [ -f "$p" ]; then
+    case "$p" in
+      /*) printf '%s' "$p" ;;
+      *) printf '%s' "$PWD/$p" ;;
+    esac
+    return 0
+  fi
+  [ -f "$PWD/$p" ] && { printf '%s' "$PWD/$p"; return 0; }
+  for w in "${_PICK_WORKTREES[@]}"; do
+    [ -f "$w/$p" ] && { printf '%s' "$w/$p"; return 0; }
+  done
+  local IFS=':'
+  for r in ${QUICKLOOK_ROOTS:-}; do
+    [ -n "$r" ] && [ -f "$r/$p" ] && { printf '%s' "$r/$p"; return 0; }
+  done
+  return 1
+}
+
+# _pick_resolve_dir_local <path> -> ABSOLUTE directory path on stdout, rc
+# 0/1. Subprocess-free mirror of `_resolve_dir()`/`_dir_candidates()`
+# (dir.sh) over the same hoisted _PICK_WORKTREES - a FILE at an
+# earlier-priority candidate still wins its step (never lets a
+# later-priority directory hit shadow an earlier file), matching dir.sh's
+# own priority rule exactly.
+_pick_resolve_dir_local() {
+  local p="$1" w r cand
+  local -a cands=()
+  case "$p" in
+    /*) cands+=("$p") ;;
+    *) cands+=("$PWD/$p") ;;
+  esac
+  for w in "${_PICK_WORKTREES[@]}"; do
+    cands+=("$w/$p")
+  done
+  local IFS=':'
+  for r in ${QUICKLOOK_ROOTS:-}; do
+    [ -n "$r" ] && cands+=("$r/$p")
+  done
+  unset IFS
+  for cand in "${cands[@]}"; do
+    [ -f "$cand" ] && return 1
+    [ -d "$cand" ] && { printf '%s' "$cand"; return 0; }
+  done
+  return 1
+}
+
+# _pick_resolve_github_local <repo> <rest> -> ABSOLUTE file path on
+# stdout, rc 0/1. Subprocess-free mirror of resolve_github() (lib.sh
+# above): same i=2..5 split-and-retry loop, same unsafe_relpath guard
+# (reused directly - it is already pure), but reads the hoisted
+# _PICK_ROOT instead of a fresh `git rev-parse`, calls
+# _pick_resolve_local instead of resolve(), and _pick_cut_from_field
+# instead of forking `cut`.
+_pick_resolve_github_local() {
+  local repo="$1" rest="$2" i cand gname r
+  gname="${_PICK_ROOT##*/}"
+  for i in 2 3 4 5; do
+    cand="$(_pick_cut_from_field "$rest" "$i")"
+    [ -z "$cand" ] && break
+    unsafe_relpath "$cand" && continue
+    if [ -n "$_PICK_ROOT" ] && [ "$gname" = "$repo" ] && [ -f "$_PICK_ROOT/$cand" ]; then
+      printf '%s' "$_PICK_ROOT/$cand"
+      return 0
+    fi
+    if _pick_resolve_local "$cand"; then return 0; fi
+    local IFS=':'
+    for r in ${QUICKLOOK_ROOTS:-}; do
+      [ -n "$r" ] && [ -f "$r/$repo/$cand" ] && { printf '%s' "$r/$repo/$cand"; return 0; }
+    done
+    unset IFS
+  done
+  return 1
+}
+
+# _pick_bare_name_hit_local <clip_path> -> rc 0 iff <clip_path> is a
+# UNIQUE case-insensitive substring match against this scan's HOISTED
+# _PICK_LSFILES (one `git ls-files` invocation for the whole scan, not one
+# per span - see pick_scan_text). Reuses bare-name.sh's own matching rule
+# (case-insensitive fixed-string substring, unique-hit-only) but stops
+# there - no fzf, no exit-the-calling-script branch. handle_bare_name is
+# NOT called: it is interactive UI by design (see bare-name.sh's own
+# header comment) and can `exit` the calling process outright on an
+# unresolved multi-match, which a pure text-in/text-out scan must never
+# risk.
+#
+# Pure bash, no `grep` fork: an earlier version ran `grep -icF` per call,
+# which is a single subprocess per UNIQUE unresolved span - fine for a
+# handful of bare-name candidates, but a 500-line screen has hundreds of
+# unique non-path words that all fall through to here, and forking grep
+# for each one alone cost ~5s (measured). Looping `[[ == *needle* ]]` over
+# the hoisted file list in-process removed that fork entirely; an early
+# return the instant a SECOND match is seen keeps the common "ambiguous"
+# case cheap too. See DECISIONS.md "SG-01 CRITICAL fix, round 2".
+_pick_bare_name_hit_local() {
+  local clip_path="$1" needle line n=0
+  [ -n "$clip_path" ] || return 1
+  [ -n "$_PICK_ROOT" ] || return 1
+  needle="${clip_path,,}"
+  while IFS= read -r line; do
+    [ -z "$line" ] && continue
+    if [[ "${line,,}" == *"$needle"* ]]; then
+      n=$((n + 1))
+      [ "$n" -gt 1 ] && return 1
+    fi
+  done <<<"$_PICK_LSFILES"
+  [ "$n" -eq 1 ]
+}
+
+# _pick_match_kind <hkind> <span> -> rc 0 iff handler kind <hkind> claims
+# <span>. Identical to calling `match_$hkind` directly for every kind
+# EXCEPT `dir`: the real match_dir (dir.sh) forks `git worktree list` on
+# every call via `_resolve_dir`, so the WIN-CHECK itself would reintroduce
+# a per-span subprocess even though the classify step already switched to
+# _pick_resolve_dir_local - this routes dir's win-check through the same
+# hoisted-data predicate. Every other kind's match_<kind> is already
+# subprocess-free (classify_token/regex/case checks only), so those are
+# called as-is - REUSING the real handler, not a parallel copy.
+_pick_match_kind() {
+  local hkind="$1" span="$2"
+  case "$hkind" in
+    dir) _pick_resolve_dir_local "$span" >/dev/null ;;
+    *) "match_$hkind" "$span" ;;
+  esac
+}
+
+# _pick_classify_span <span> <outvar> -> writes one of path url sha ref
+# dir name into the CALLER's <outvar> (a nameref), or leaves it EMPTY (a
+# dropped span) - see the contract comment above. Walks the LIVE
+# HANDLER_KINDS array (via _pick_match_kind) to decide which handler wins,
+# then resolves using the scan-local pure predicates above - never
+# handle_path/handle_dir/handle_github/handle_bare_name, so no
+# RESOLVED_*/CLIP_PATH/CLIP_LINE global is ever touched (see the PURITY
+# note above). Relies on _PICK_ROOT/_PICK_WORKTREES/_PICK_LSFILES being
+# set by the caller (pick_scan_text, via bash dynamic scoping).
+#
+# nameref, not `printf`+`$(...)`, for the SAME reason _pick_trim_span is:
+# this runs once per UNIQUE span, still hundreds on a busy screen, and a
+# command substitution forks even for a pure-bash function - see the
+# CRITICAL fix round 2 in DECISIONS.md.
+_pick_classify_span() {
+  local -n _pcs_out="$2"
+  local span="$1" hkind matched=1
+  _pcs_out=""
+  for hkind in "${HANDLER_KINDS[@]}"; do
+    if _pick_match_kind "$hkind" "$span"; then
+      matched=0
+      break
+    fi
+  done
+  [ "$matched" -eq 0 ] || return 0
+  case "$hkind" in
+    github)
+      local mapper
+      case "$span" in
+        https://gitlab.com/*) mapper=map_gitlab_url ;;
+        https://bitbucket.org/*) mapper=map_bitbucket_url ;;
+        *) mapper=map_github_url ;;
+      esac
+      if "$mapper" "$span" && _pick_resolve_github_local "$GH_REPO" "$GH_REST" >/dev/null; then
+        _pcs_out='path'
+      else
+        _pcs_out='url'
+      fi
+      ;;
+    vcs)
+      if [[ "$span" =~ $_VCS_SHA_RE ]]; then
+        _pcs_out='sha'
+      else
+        _pcs_out='ref'
+      fi
+      ;;
+    url) _pcs_out='url' ;;
+    dir) _pcs_out='dir' ;;
+    path)
+      local clip_path="$span"
+      [[ "$span" =~ ^(.+):([0-9]+)$ ]] && clip_path="${BASH_REMATCH[1]}"
+      if _pick_resolve_local "$clip_path" >/dev/null; then
+        _pcs_out='path'
+      elif _pick_bare_name_hit_local "$clip_path"; then
+        _pcs_out='name'
+      fi
+      ;;
+  esac
+}
+
+# _pick_tier_rank <kind> -> a numeric sort key, lower = higher confidence.
+_pick_tier_rank() {
+  case "$1" in
+    path) printf 1 ;;
+    url) printf 2 ;;
+    sha) printf 3 ;;
+    ref) printf 4 ;;
+    dir) printf 5 ;;
+    name) printf 6 ;;
+    *) printf 9 ;;
+  esac
+}
+
+# pick_scan_text -> see the contract comment above. Pure and
+# side-effect-free beyond the read-only filesystem lookups the handler
+# registry already does; no clipboard read, no pane read, no fzf, no
+# global mutation (see the PURITY note above).
+pick_scan_text() {
+  local screen
+  screen="$(_pick_strip_ansi)"
+
+  # Pass 1: tokenize the WHOLE screen and dedup BEFORE classification -
+  # each unique span is classified exactly once below, never once per
+  # occurrence (see the PERFORMANCE note above).
+  local line_no=0 line
+  local -A _pk_line=()
+  while IFS= read -r line || [ -n "$line" ]; do
+    line_no=$((line_no + 1))
+    local -a spans=()
+    IFS=$' \t' read -ra spans <<<"$line"
+    local raw_span trimmed
+    for raw_span in "${spans[@]}"; do
+      [ -z "$raw_span" ] && continue
+      _pick_trim_span "$raw_span" trimmed
+      [ -z "$trimmed" ] && continue
+      _pk_line["$trimmed"]="$line_no"
+    done
+  done <<<"$screen"
+
+  [ "${#_pk_line[@]}" -eq 0 ] && return 0
+
+  # Hoist repo state ONCE for the whole scan, not once per span (see the
+  # PERFORMANCE note above): _PICK_ROOT/_PICK_WORKTREES/_PICK_LSFILES are
+  # `local` here, so bash's dynamic scoping makes them visible to every
+  # _pick_*_local predicate called below without passing them explicitly.
+  local _PICK_ROOT _PICK_LSFILES=""
+  local -a _PICK_WORKTREES=()
+  _PICK_ROOT="$(git rev-parse --show-toplevel 2>/dev/null)"
+  if [ -n "$_PICK_ROOT" ]; then
+    local w
+    while IFS= read -r w; do
+      _PICK_WORKTREES+=("$w")
+    done < <(git worktree list --porcelain 2>/dev/null | awk '/^worktree /{print $2}')
+    _PICK_LSFILES="$(git -C "$_PICK_ROOT" ls-files 2>/dev/null)"
+  fi
+
+  # Pass 2: classify each unique span exactly once.
+  local -A _pk_kind=()
+  local token kind
+  for token in "${!_pk_line[@]}"; do
+    _pick_classify_span "$token" kind
+    [ -n "$kind" ] && _pk_kind["$token"]="$kind"
+  done
+
+  [ "${#_pk_kind[@]}" -eq 0 ] && return 0
+
+  # Pass 3: rank (tier asc, line-no desc, raw-token asc as a deterministic
+  # tertiary tiebreak - see the Rank note above) and emit.
+  for token in "${!_pk_kind[@]}"; do
+    printf '%s\t%s\t%s\t%s\n' \
+      "$(_pick_tier_rank "${_pk_kind[$token]}")" \
+      "${_pk_line[$token]}" \
+      "$token" \
+      "${_pk_kind[$token]}"
+  done | sort -t $'\t' -k1,1n -k2,2nr -k3,3 | while IFS=$'\t' read -r _ ln tok knd; do
+    printf '%s\t%s\t%s\n' "$tok" "$knd" "$ln"
+  done
+}
+
+# pick_count_header -> reads pick_scan_text's TAB-delimited output on
+# stdin, emits the one-line affordance:
+#   N on screen · A path · B url · C sha · D ref · E dir · F name
+# listing only the NON-ZERO kinds, fixed order, N = total candidates.
+pick_count_header() {
+  local kind total=0
+  local c_path=0 c_url=0 c_sha=0 c_ref=0 c_dir=0 c_name=0
+  while IFS=$'\t' read -r _ kind _; do
+    [ -z "$kind" ] && continue
+    total=$((total + 1))
+    case "$kind" in
+      path) c_path=$((c_path + 1)) ;;
+      url) c_url=$((c_url + 1)) ;;
+      sha) c_sha=$((c_sha + 1)) ;;
+      ref) c_ref=$((c_ref + 1)) ;;
+      dir) c_dir=$((c_dir + 1)) ;;
+      name) c_name=$((c_name + 1)) ;;
+    esac
+  done
+  local -a parts=()
+  [ "$c_path" -gt 0 ] && parts+=("$c_path path")
+  [ "$c_url" -gt 0 ] && parts+=("$c_url url")
+  [ "$c_sha" -gt 0 ] && parts+=("$c_sha sha")
+  [ "$c_ref" -gt 0 ] && parts+=("$c_ref ref")
+  [ "$c_dir" -gt 0 ] && parts+=("$c_dir dir")
+  [ "$c_name" -gt 0 ] && parts+=("$c_name name")
+  printf '%s on screen' "$total"
+  local p
+  for p in "${parts[@]}"; do
+    printf ' · %s' "$p"
+  done
+  printf '\n'
+}
+
+# pick_acquire [pane_id] -> see the contract comment above. The ONE
+# live-dependency wrapper: everything else in this section is the pure
+# core.
+pick_acquire() {
+  local pane_id="${1:-${QUICKLOOK_PICK_ORIGIN_PANE:-}}"
+  if [ -z "$pane_id" ] && command -v jq >/dev/null 2>&1; then
+    pane_id="$("$herdr_bin" pane current 2>/dev/null | jq -r '.result.pane.pane_id // empty' 2>/dev/null)"
+  fi
+  "$herdr_bin" pane read "$pane_id" --source "${QUICKLOOK_PICK_SOURCE:-visible}" --format text 2>/dev/null | pick_scan_text
+}
