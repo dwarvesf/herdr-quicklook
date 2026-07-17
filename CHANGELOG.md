@@ -3,6 +3,7 @@
 ## Unreleased
 
 - `prefix+shift+p` opens the `pick` overlay: lists every openable token currently on screen (ranked path > url > sha > ref > dir > name) with a count-by-kind header; the clipboard token is preselected as row 1 when it resolves; `Enter` opens the pick through the existing preview overlay, `Esc` closes without opening anything.
+- `pluck-chain`'s degrade now routes to the native pick overlay; herdr-pluck fully optional.
 
 ## 0.3.0 (2026-07-17)
 
