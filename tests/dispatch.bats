@@ -19,11 +19,17 @@ setup() {
   git -C "$FIX/myrepo" -c user.email=t@t -c user.name=t commit -qm fix
 
   # stubs: `less` prints its args (so the target path is visible); `herdr`
-  # answers config-dir with empty; `bat` absent so preview-pane takes the less path.
+  # answers config-dir with empty; `bat` absent so preview-pane takes the less path;
+  # `open` logs the URL it was asked to open instead of actually launching a
+  # browser (the browser-fallback test below asserts against OPEN_LOG). Without
+  # this stub, a browser-mode token on a real macOS box would resolve PATH's
+  # /usr/bin/open and pop a real foreground browser window during `bats tests/`.
   STUB="$(mktemp -d)"
+  OPEN_LOG="$(mktemp)"
   printf '#!/usr/bin/env bash\nprintf "LESS_ARGS: %%s\\n" "$*"\n' > "$STUB/less"
   printf '#!/usr/bin/env bash\nexit 0\n' > "$STUB/herdr"
-  chmod +x "$STUB/less" "$STUB/herdr"
+  printf '#!/usr/bin/env bash\nprintf "%%s\\n" "$1" >> "%s"\n' "$OPEN_LOG" > "$STUB/open"
+  chmod +x "$STUB/less" "$STUB/herdr" "$STUB/open"
 
   cd "$FIX/myrepo"
   # keep git/coreutils reachable but force our less + no bat
@@ -38,6 +44,7 @@ setup() {
 teardown() {
   cd /
   rm -rf "$FIX" "$STUB"
+  rm -f "$OPEN_LOG"
 }
 
 @test "dispatch: github blob URL opens the local file at the line" {
@@ -57,9 +64,13 @@ teardown() {
   [[ "$output" == *"+2"* ]]
 }
 
-@test "dispatch: a github URL with no matching local checkout does not open a file" {
+@test "dispatch: a github URL with no matching local checkout falls back to the browser, not a file" {
   export QUICKLOOK_TOKEN="https://github.com/owner/ghostrepo/blob/main/nope.md"
   run bash "$SCRIPT"
+  [ "$status" -eq 0 ]
   # no local file resolved -> browser fallback path, less never called with a target
   ! [[ "$output" == *"LESS_ARGS"*"nope.md"* ]]
+  # and it IS the browser fallback, not a silent no-op: url_open (stubbed as
+  # `open` above) received exactly the original ghost URL, unmodified.
+  [ "$(cat "$OPEN_LOG")" = "https://github.com/owner/ghostrepo/blob/main/nope.md" ]
 }

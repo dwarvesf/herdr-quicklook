@@ -79,6 +79,23 @@ teardown() {
   [ "${#lines[@]}" -eq 3 ]
 }
 
+@test "record_open: at the REAL production default (20, not an overridden small cap), the 21st entry evicts the 1st" {
+  # The cap test above overrides RECENTS_MAX=3 for speed; that never proves
+  # the actual shipped default (QUICKLOOK_RECENTS_MAX unset -> 20 in lib.sh)
+  # evicts at the right boundary. setup() already sets RECENTS_MAX=20 to
+  # match that default literally (not a stand-in small number), so this
+  # pins the real cap: entry 21 must push entry 1 off, entries 2-21 survive.
+  local i
+  for i in $(seq 1 21); do
+    record_open "token-$i"
+  done
+  run recents_list
+  [ "${#lines[@]}" -eq 20 ]
+  [ "${lines[0]}" = "token-21" ]
+  [ "${lines[19]}" = "token-2" ]
+  ! grep -qxF "token-1" "$(recents_state_file)"
+}
+
 @test "record_open: empty token is a no-op (no file created)" {
   record_open ""
   [ ! -e "$(recents_state_file)" ]

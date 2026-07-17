@@ -218,3 +218,26 @@ teardown() {
   run unsafe_relpath "a/../b";       [ "$status" -eq 0 ]
   run unsafe_relpath "a/b/c.md";     [ "$status" -eq 1 ]
 }
+
+# The literal-`..`/`//` smuggles above are only half the surface: GH_REST is
+# urldecoded BEFORE unsafe_relpath ever sees it (map_github_url calls
+# urldecode, then resolve_github's caller passes the decoded GH_REST on), so
+# an ATTACKER-SUPPLIED %-encoded traversal must be caught too. This pins the
+# decode-then-check ORDER end to end through resolve_any_token (not just the
+# already-decoded unit above) - the one regression that would silently
+# reopen the smuggle is someone moving the unsafe_relpath check earlier than
+# the urldecode call, or adding a new host mapper that forgets to decode
+# first.
+
+@test "resolve_any_token: URL-encoded dotdot traversal (%2e%2e) in a github blob URL is refused, falls back to browser" {
+  resolve_any_token "https://github.com/o/repo/blob/main/%2e%2e/%2e%2e/etc/passwd"; rc=$?
+  [ "$rc" -eq 0 ]
+  [ "$RESOLVED_MODE" = "browser" ]
+  [ "$RESOLVED_TARGET" = "https://github.com/o/repo/blob/main/%2e%2e/%2e%2e/etc/passwd" ]
+}
+
+@test "resolve_any_token: URL-encoded absolute-slash smuggle (%2f) in a github blob URL is refused, falls back to browser" {
+  resolve_any_token "https://github.com/o/repo/blob/main%2f..%2f..%2fetc%2fpasswd"; rc=$?
+  [ "$rc" -eq 0 ]
+  [ "$RESOLVED_MODE" = "browser" ]
+}
