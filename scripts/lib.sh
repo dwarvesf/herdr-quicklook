@@ -42,23 +42,24 @@
 #             scripts/open-preview.sh (a fresh resolve_any_token call there
 #             reproduces the identical RESOLVED_CMD deterministically , safe
 #             for command-mode specifically, see the viewer caveat below).
-#             No handler emits this yet (SG-02/vcs.sh is a stub).
+#             Produced today by vcs.sh (SG-02: bare SHA -> `git show`, `#123`
+#             / PR URL -> `gh pr view`) and dir.sh (SG-04: herdr-file-viewer
+#             absent -> `eza --tree`/`ls -la`).
 #   viewer  - RESOLVED_TARGET is a directory to root the file-viewer at.
-#             preview-pane.sh's safe DEGRADE (no handler drives the real
-#             file-viewer socket protocol yet) pages an `eza --tree` /
-#             `ls -la` listing of RESOLVED_TARGET via render_command_in_pager
-#             , the same shape SG-04's own goal file already documents as
-#             its no-viewer-installed fallback. open-in-viewer.sh cannot do
-#             even that (no pager of its own) and cannot safely forward the
-#             raw token the way command-mode does either: path.sh's
-#             resolve() only matches regular files (`-f`), so a directory
-#             token would fail to re-resolve there and silently read as "not
-#             found". It notifies the user and stops instead. Neither arm
-#             ever falls through to file-rendering on a directory ,
-#             the concrete bug this widening exists to prevent. Real
-#             viewer-rooting over the herdr socket is SG-04's own feature;
-#             expect it to replace these degrade bodies. No handler emits
-#             this yet (SG-04/dir.sh is a stub).
+#             dir.sh only emits this mode when herdr-file-viewer is
+#             confirmed installed (else it emits `command` with an
+#             eza/ls tree instead, see below). preview-pane.sh (the popup)
+#             still cannot drive ANOTHER pane's file-viewer socket - it has
+#             only its own TTY, a pager - so its viewer arm is a permanent
+#             safe DEGRADE, paging an `eza --tree` / `ls -la` listing of
+#             RESOLVED_TARGET via render_command_in_pager, the same shape as
+#             dir.sh's own no-viewer-installed fallback. open-in-viewer.sh
+#             CAN drive another pane, so its viewer arm reuses the same
+#             goto-path send-keys sequence the file case already uses (f ->
+#             type <repo-relative path> -> Enter) to land the viewer's
+#             cursor on the directory. Neither arm ever falls through to
+#             file-rendering on a directory , the concrete bug this
+#             widening exists to prevent.
 #
 # resolve_any_token <raw> walks HANDLER_KINDS in order and dispatches to the
 # first handler whose match_<kind> accepts the token, returning that
@@ -343,9 +344,9 @@ resolve() {
 # also matches url.sh's generic http(s) predicate via classify_token; if url
 # stayed first it would claim every PR URL as a generic browser-mode open
 # before vcs ever got a look. vcs's other two shapes (bare SHA, `#123`)
-# don't overlap anything, so this reorder is a no-op for them. `dir` is
-# registered now as a stub (SG-04 fills in its match_/handle_ body later,
-# one file, no registry-line edit needed).
+# don't overlap anything, so this reorder is a no-op for them. `dir` is real
+# too (SG-04): it decides viewer vs command mode itself, see the contract
+# comment above.
 HANDLER_KINDS=(github vcs url dir path)
 
 # LIB_DIR: this file's own directory (== scripts/), kept around (not
