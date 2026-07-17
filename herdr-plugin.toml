@@ -11,7 +11,7 @@
 
 id = "herdr-quicklook"
 name = "herdr-quicklook"
-version = "0.1.0"
+version = "0.3.0"
 description = "Quick Look for herdr: pop the clipboard's path in an overlay, escalate to the file-viewer with one key, URLs go to the browser."
 min_herdr_version = "0.7.0"
 platforms = ["linux", "macos"]

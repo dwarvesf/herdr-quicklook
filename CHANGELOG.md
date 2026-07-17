@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+## 0.3.0 (2026-07-17)
+
 - `prefix+shift+y` chains herdr-pluck's hint overlay straight into the preview overlay: pick a token and it opens immediately, no separate keypress to consume the pick. Degrades to the plain clipboard flow when herdr-pluck isn't installed. Demo GIFs for every main use case (token dispatch, the three in-overlay keys, recents, the pluck chain) replace the single preview recording. (#15)
 - Token dispatch refactored into a `scripts/lib.sh` entry point (`resolve_any_token`) plus a one-file-per-kind handler registry (`scripts/handlers/*.sh`); `RESOLVED_MODE` widened to `file` / `browser` / `command` / `viewer` so a token kind can render as a paged command or root a directory, not just open a file or a URL. Internal refactor, no user-facing behavior change on its own. (#7)
 - GitHub blob/raw URLs (`github.com/o/r/blob/<ref>/<path>#L<n>`, `/raw/`, `raw.githubusercontent.com`) open the LOCAL checkout at the line when one resolves (current repo by name, plain resolve chain, `QUICKLOOK_ROOTS/<repo>`); refs containing `/` are handled by successive splits; unresolvable URLs fall back to the browser. `#L42-L60` ranges keep the start line. A crafted URL cannot smuggle an absolute or `..`-traversal path (guarded). (#5)
