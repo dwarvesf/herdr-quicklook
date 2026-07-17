@@ -63,11 +63,48 @@ teardown() {
   [ "$RESOLVED_TARGET" = "https://github.com/o/ghostrepo/blob/main/nope.md" ]
 }
 
+@test "registry: non-http(s) schemes never reach mode=browser (url_open only ever fires on an http/https token)" {
+  # classify_token's url case is an explicit http://|https:// prefix match;
+  # everything else (including a scheme-looking string) falls to the path
+  # catch-all. This pins that a clipboard payload spoofing a URL scheme -
+  # javascript: (XSS-style), file:// (local-disclosure-style), data: (HTML
+  # payload), a non-browser scheme like ftp:// - can NEVER be handed to
+  # url_open via mode=browser; each is treated as an ordinary (unresolvable)
+  # path token instead, rc 1, no target set. The one regression this closes
+  # is classify_token's case pattern ever widening to a bare `*:*` match.
+  local t
+  for t in 'javascript:alert(document.cookie)' \
+           'file:///etc/passwd' \
+           'data:text/html,<script>alert(1)</script>' \
+           'ftp://evil.example/x'; do
+    rc=0
+    resolve_any_token "$t" || rc=$?
+    [ "$rc" -eq 1 ]
+    [ "$RESOLVED_MODE" != "browser" ]
+    [ -z "$RESOLVED_MODE" ]
+  done
+}
+
 # ---- an unmatched token falls through ----
 
 @test "registry: an unresolvable path token returns rc 1, no target set" {
   rc=0
   resolve_any_token "no/such/file.md" || rc=$?
+  [ "$rc" -eq 1 ]
+  [ -z "$RESOLVED_TARGET" ]
+  [ -z "$RESOLVED_MODE" ]
+}
+
+@test "registry: a whitespace-only token (bypasses the pane scripts' own [ -z ] empty guard) is a clean no-match, not a crash" {
+  # preview-pane.sh/open-in-viewer.sh only special-case a genuinely EMPTY
+  # raw token before ever calling resolve_any_token; "   " is non-empty so
+  # it reaches here untouched (QUICKLOOK_TOKEN is never trimmed the way
+  # clip_read's xargs trims a real clipboard read). It must fall through
+  # every handler (git even has no candidate path literally named "   ")
+  # and land on rc 1 with no RESOLVED_MODE set, same as any other unmatched
+  # path token above - never a spurious match or a crash.
+  rc=0
+  resolve_any_token "   " || rc=$?
   [ "$rc" -eq 1 ]
   [ -z "$RESOLVED_TARGET" ]
   [ -z "$RESOLVED_MODE" ]

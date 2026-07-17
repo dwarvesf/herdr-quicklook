@@ -121,6 +121,29 @@ teardown() {
   [[ "$output" == *"not a file I can find"* ]]
 }
 
+@test "preview-pane command mode: a real vcs #ref whose gh lookup fails (nonexistent PR) degrades to a paged error, not a crash" {
+  # Not the synthetic zzz-test-only handler this file otherwise uses - this
+  # drives the REAL vcs.sh path (a #ref -> gh pr view, see handlers-vcs.bats)
+  # through the full preview-pane.sh dispatch, with gh stubbed to fail the
+  # way it does for a PR number that doesn't exist. render_command_in_pager
+  # pipes "$@" 2>&1 into less, so a failing gh's stderr must still reach the
+  # pager and the SCRIPT must still exit 0 - the exit code the pane script
+  # reports is less's, not gh's, and that must never look like a crash.
+  printf '#!/usr/bin/env bash\nprintf "LESS_ARGS: %%s\\n" "$*"\ncat\n' >"$STUB/less"
+  chmod +x "$STUB/less"
+  cat >"$STUB/gh" <<'GH'
+#!/usr/bin/env bash
+echo "GraphQL: Could not resolve to a PullRequest with the number of 999999." >&2
+exit 1
+GH
+  chmod +x "$STUB/gh"
+  export QUICKLOOK_TOKEN="#999999"
+  run bash "$PREVIEW"
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"LESS_ARGS:"* ]]
+  [[ "$output" == *"Could not resolve to a PullRequest"* ]]
+}
+
 # ---- preview-pane.sh: viewer mode ----
 
 @test "preview-pane viewer mode: never reaches exec less on the directory" {

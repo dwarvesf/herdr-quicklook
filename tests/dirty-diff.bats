@@ -96,6 +96,28 @@ teardown() {
   grep -qxF "ARG2=[$FIX/repo/sub dir]" "$GIT_LOG"
 }
 
+@test "dirty-diff: an untracked file (never added to git) shows no unstaged changes, same as a clean file" {
+  # Every test above drives a FAKE git that returns a canned
+  # DIRTY_DIFF_STUB_OUTPUT, so none of them prove what `git diff -- <path>`
+  # actually does for a path that was never added to the index (git diff
+  # only shows unstaged changes to TRACKED files, so an untracked file
+  # produces empty output too, same as a clean one - it does not error or
+  # print the file's full contents as a "whole file added" diff). Swap in
+  # the real git binary for this one test to pin that real behavior, not
+  # the stub's assumption of it.
+  printf '#!/usr/bin/env bash\nexec /usr/bin/git "$@"\n' >"$STUB/git"
+  chmod +x "$STUB/git"
+  git -C "$FIX/repo" init -q -b main
+  printf 'tracked\n' >"$FIX/repo/tracked.txt"
+  git -C "$FIX/repo" add -A
+  git -C "$FIX/repo" -c user.email=t@t -c user.name=t commit -qm init
+  printf 'never added\n' >"$FIX/repo/untracked.txt"
+  run bash "$SCRIPT" "$FIX/repo/untracked.txt" </dev/null
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"no unstaged changes for $FIX/repo/untracked.txt"* ]]
+  [[ "$output" != *"LESS_ARGS:"* ]]
+}
+
 @test "dirty-diff: no file argument is a no-op" {
   run bash "$SCRIPT" </dev/null
   [ "$status" -eq 0 ]
