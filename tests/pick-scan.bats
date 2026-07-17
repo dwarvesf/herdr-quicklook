@@ -355,3 +355,39 @@ TXT
   [ "$status" -eq 0 ]
   [ "$elapsed" -lt 5 ]
 }
+
+# ---- bash>=4 guard (SG-04 catch): pick_scan_text/pick_count_header use
+# `local -A`/`local -n`, bash 4.3+. $BASH_VERSINFO is a readonly bash
+# builtin, so it can't be stubbed to simulate an old shell while this bats
+# run is itself under a modern bash - _pick_bash_version_message takes the
+# version as plain arguments instead, so it's fully testable. ----
+
+@test "_pick_bash_version_message: bash 3.2 (macOS system bash) fails with the honest one-line fix" {
+  run _pick_bash_version_message 3 2
+  [ "$status" -eq 1 ]
+  [ "$output" = "quicklook: pick needs bash >= 4.3 (this shell is bash 3.2) - brew install bash" ]
+}
+
+@test "_pick_bash_version_message: bash 4.2 (local -A but no local -n) still fails" {
+  run _pick_bash_version_message 4 2
+  [ "$status" -eq 1 ]
+  [[ "$output" == *"bash >= 4.3"* ]]
+}
+
+@test "_pick_bash_version_message: bash 4.3 (the exact minimum) passes with empty output" {
+  run _pick_bash_version_message 4 3
+  [ "$status" -eq 0 ]
+  [ -z "$output" ]
+}
+
+@test "_pick_bash_version_message: bash 5.x passes with empty output" {
+  run _pick_bash_version_message 5 1
+  [ "$status" -eq 0 ]
+  [ -z "$output" ]
+}
+
+@test "_pick_require_bash4: passes silently on the bats-driving interpreter (this suite already assumes bash >= 4, per every other test in this file)" {
+  run _pick_require_bash4
+  [ "$status" -eq 0 ]
+  [ -z "$output" ]
+}

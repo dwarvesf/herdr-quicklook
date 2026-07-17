@@ -541,6 +541,40 @@ resolve_any_token() {
 # lexicographic ascending).
 # -----------------------------------------------------------------------
 
+# _pick_bash_version_message <major> <minor> -> empty output + rc 0 when a
+# bash of that version can run pick_scan_text/pick_count_header (they use
+# `local -A` associative arrays, bash 4.0+, and `local -n` namerefs, bash
+# 4.3+, added in the CRITICAL-fix perf rewrite - see DECISIONS.md); rc 1 +
+# one honest line naming the fix otherwise. Takes the version as ARGUMENTS
+# rather than reading $BASH_VERSINFO directly so bats can drive it with
+# synthetic values - $BASH_VERSINFO is a readonly bash-builtin array, so a
+# test running under a real modern bash cannot stub it to simulate 3.2.
+_pick_bash_version_message() {
+  local major="$1" minor="$2"
+  if [ "$major" -gt 4 ] || { [ "$major" -eq 4 ] && [ "$minor" -ge 3 ]; }; then
+    return 0
+  fi
+  printf 'quicklook: pick needs bash >= 4.3 (this shell is bash %s.%s) - brew install bash\n' \
+    "$major" "$minor"
+  return 1
+}
+
+# _pick_require_bash4 -> the live guard, a thin wrapper feeding the ACTUAL
+# running interpreter's own $BASH_VERSINFO into _pick_bash_version_message
+# above. macOS ships bash 3.2.57 at /bin/bash (last GPLv2 release);
+# herdr-plugin.toml's `command = ["bash", "scripts/pick-pane.sh"]` resolves
+# `bash` via whatever PATH the spawning process has - fine when Homebrew's
+# bash leads PATH (the common dev-machine case), a real bug on a bare-PATH
+# server or a locked-down shell. The failure mode is NOT a crash:
+# `local -A`/`local -n` fail as plain builtin errors under `set -u` alone
+# (no `set -e` anywhere in this plugin), so the script keeps running with
+# broken/empty associative-array state and silently produces a WRONG
+# result (e.g. "0 on screen" when the real screen has candidates) -
+# callers print this guard's output and bail instead. See DECISIONS.md.
+_pick_require_bash4() {
+  _pick_bash_version_message "${BASH_VERSINFO[0]}" "${BASH_VERSINFO[1]}"
+}
+
 # _pick_trim_span <span> <outvar> -> writes <span> into the CALLER's
 # <outvar> (a nameref, no stdout/command-substitution) with wrapping
 # punctuation (matched quotes/parens/brackets/braces/backticks/angle
