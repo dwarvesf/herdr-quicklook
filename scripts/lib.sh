@@ -398,3 +398,273 @@ resolve_any_token() {
   done
   return 1
 }
+
+# -----------------------------------------------------------------------
+# pick-anywhere scan (v0.5, SG-01): pick_scan_text / pick_count_header /
+# pick_acquire, plus the action/pane wiring contract Wave 2 (SG-02, SG-03)
+# builds against.
+#
+# pick_scan_text (pure core, the whole serializer): reads pane TEXT on
+# stdin, emits the ranked, deduped candidate list on stdout, one candidate
+# per line, TAB-delimited:
+#   <raw-token>\t<kind>\t<line-no>
+# <kind> is one of path url sha ref dir name (sha+ref are the two vcs
+# shapes, kept distinct only for pick_count_header's count-by-kind
+# header).
+#
+# Classification REUSES the handler registry above - never a new regex
+# zoo. Each whitespace-delimited, punctuation-trimmed span is walked
+# through the SAME HANDLER_KINDS array resolve_any_token uses (github vcs
+# url dir path - cheap shape checks first, filesystem-touching dir/path
+# last), and the kind is keyed on which handler claimed the span plus its
+# RESOLVED_MODE:
+#   github -> RESOLVED_MODE file    -> path (resolved to a real local file)
+#   github -> RESOLVED_MODE browser -> url  (no local checkout; same bucket
+#                                             as any generic url.sh token -
+#                                             github.sh never returns rc 1)
+#   vcs    -> shape matches _VCS_SHA_RE (vcs.sh's own pattern, reused
+#             directly, not re-derived)               -> sha
+#   vcs    -> otherwise (a #ref or a PR URL, both dispatch to `gh pr
+#             view`)                                  -> ref
+#   url    -> (always)                                -> url
+#   dir    -> (always; match_dir IS the resolution check - handle_dir is
+#              never called here, since its viewer/command split shells
+#              out to herdr for a distinction this scan does not need)
+#                                                       -> dir
+#   path   -> handle_path resolves to a real file       -> path
+#   path   -> handle_path fails, but a UNIQUE bare-name hit (the same
+#             `git ls-files | grep -iF` matcher bare-name.sh uses, minus
+#             its fzf/exit UI)                          -> name
+#   anything else                                       -> dropped, not
+#                                                          a candidate
+# match_path always returns 0 (the catch-all - see the contract at the
+# top of this file), so `path` as a KIND is asserted by handle_path's
+# RESOLUTION success, never by match_path alone.
+#
+# Dedup: the SAME raw token seen more than once keeps only the occurrence
+# CLOSEST TO THE BOTTOM (the largest line-no) - a plain top-to-bottom walk
+# that overwrites its dedup-map entry on every repeat gets this right
+# with no extra bookkeeping.
+#
+# Rank: confidence tier, highest first - path (resolves to a real file) >
+# url > sha > ref > dir > name. Tiebreak WITHIN a tier: larger line-no
+# first (closer to the bottom = the most recent output).
+#
+# pick_count_header: given pick_scan_text's stdout on stdin, emits the
+# one-line affordance `N on screen · A path · B url · C sha · D ref · E
+# dir · F name`, listing only the non-zero kinds in that fixed order,
+# N = total candidates.
+#
+# pick_acquire [pane_id]: the ONE live-dependency wrapper. Runs
+# `"$herdr_bin" pane read "$pane_id" --source "${QUICKLOOK_PICK_SOURCE:-
+# visible}" --format text` and pipes the result into pick_scan_text.
+# pane_id defaults to $QUICKLOOK_PICK_ORIGIN_PANE; empty -> best-effort
+# `herdr pane current | jq -r '.result.pane.pane_id'`. This is the only
+# function in this section that needs a stubbed herdr in bats - everything
+# else is the pure core, fixture-text/fixture-file testable, no live pane.
+#
+# ---- The action/pane wiring contract (pinned for SG-02 / SG-03) ----
+# Action id `pick` -> scripts/pick.sh (no TTY, mirrors scripts/recents.sh):
+#   1. captures the origin pane id BEFORE opening the overlay
+#      (`herdr pane current | jq -r '.result.pane.pane_id'` - once the
+#      pick-pane overlay is focused, `pane current` returns the OVERLAY,
+#      not the origin the user was in);
+#   2. reads the clipboard token (pick_token / clip_read);
+#   3. opens the `pick-pane` overlay, forwarding
+#      `--env QUICKLOOK_PICK_ORIGIN_PANE=<id>` (+ `--cwd <origin cwd>` +
+#      `--env QUICKLOOK_PICK_CLIP=<clip>` when a clipboard value exists).
+# Pane id `pick-pane` -> scripts/pick-pane.sh (real TTY, mirrors
+# scripts/recents-pane.sh):
+#   4. `pick_acquire "$QUICKLOOK_PICK_ORIGIN_PANE"` -> the candidate list;
+#   5. builds the clipboard-first fzf list (row 1 = the clipboard token
+#      IF it resolves, deduped out of the on-screen rows below it) +
+#      `pick_count_header`'s output as the fzf `--header`;
+#   6. Enter -> `export QUICKLOOK_TOKEN=<raw>; exec bash preview-pane.sh`
+#      (the SAME open path recents-pane.sh already reuses - resolve +
+#      render + record_open, zero new open code);
+#   7. Esc -> close, nothing opened; zero candidates and no resolvable
+#      clipboard -> an honest empty state, never a crash.
+# Confidence-tier order + tiebreak: as above (path > url > sha > ref >
+# dir > name; within a tier, larger line-no first).
+# -----------------------------------------------------------------------
+
+# _pick_trim_span <span> -> <span> with wrapping punctuation (matched
+# quotes/parens/brackets/braces/backticks/angle brackets) and trailing
+# `:,;.` stripped, in whichever order applies - the two passes alternate
+# until neither changes anything, so a sentence-final period OUTSIDE a
+# quoted path ("src/f.md".) and one trapped INSIDE a wrapper (src/f.md.))
+# both come off. The trailing-punct pass can never eat into a real file
+# extension: it only ever removes from the rightmost position and stops
+# the instant that position is not one of `:,;.` (e.g. "lib.sh." ->
+# "lib.sh", stopping at "h" - the ".sh" extension is untouched).
+_pick_trim_span() {
+  local s="$1" prev
+  while true; do
+    prev="$s"
+    while [ -n "$s" ]; do
+      case "${s: -1}" in
+        : | , | ';' | .) s="${s%?}" ;;
+        *) break ;;
+      esac
+    done
+    case "$s" in
+      '"'?*'"') s="${s#\"}"; s="${s%\"}" ;;
+      "'"?*"'") s="${s#\'}"; s="${s%\'}" ;;
+      '('?*')') s="${s#\(}"; s="${s%\)}" ;;
+      '['?*']') s="${s#\[}"; s="${s%\]}" ;;
+      '{'?*'}') s="${s#\{}"; s="${s%\}}" ;;
+      '<'?*'>') s="${s#<}"; s="${s%>}" ;;
+      '`'?*'`') s="${s#\`}"; s="${s%\`}" ;;
+    esac
+    [ "$s" = "$prev" ] && break
+  done
+  printf '%s' "$s"
+}
+
+# _pick_bare_name_hit <clip_path> -> rc 0 iff <clip_path> is a UNIQUE
+# case-insensitive substring match against the current repo's tracked
+# files. Reuses bare-name.sh's own matcher (same `git ls-files | grep
+# -iF`, same unique-hit rule) but stops there - no fzf, no
+# exit-the-calling-script branch. handle_bare_name is NOT called: it is
+# interactive UI by design (see bare-name.sh's own header comment) and can
+# `exit` the calling process outright on an unresolved multi-match, which
+# a pure text-in/text-out scan must never risk.
+_pick_bare_name_hit() {
+  local clip_path="$1" root matches n
+  [ -n "$clip_path" ] || return 1
+  root="$(git rev-parse --show-toplevel 2>/dev/null)"
+  [ -z "$root" ] && return 1
+  matches="$(git -C "$root" ls-files 2>/dev/null | grep -iF -- "$clip_path" | head -100)"
+  n="$(printf '%s' "$matches" | grep -c . 2>/dev/null)"
+  [ "$n" -eq 1 ]
+}
+
+# _pick_classify_span <span> -> one of path url sha ref dir name on
+# stdout, or nothing (a dropped span) - see the contract comment above.
+_pick_classify_span() {
+  local span="$1" hkind matched=1
+  for hkind in "${HANDLER_KINDS[@]}"; do
+    if "match_$hkind" "$span"; then
+      matched=0
+      break
+    fi
+  done
+  [ "$matched" -eq 0 ] || return 0
+  case "$hkind" in
+    github)
+      handle_github "$span"
+      case "$RESOLVED_MODE" in
+        file) printf 'path' ;;
+        browser) printf 'url' ;;
+      esac
+      ;;
+    vcs)
+      if [[ "$span" =~ $_VCS_SHA_RE ]]; then
+        printf 'sha'
+      else
+        printf 'ref'
+      fi
+      ;;
+    url) printf 'url' ;;
+    dir) printf 'dir' ;;
+    path)
+      if handle_path "$span"; then
+        printf 'path'
+      elif _pick_bare_name_hit "$CLIP_PATH"; then
+        printf 'name'
+      fi
+      ;;
+  esac
+}
+
+# _pick_tier_rank <kind> -> a numeric sort key, lower = higher confidence.
+_pick_tier_rank() {
+  case "$1" in
+    path) printf 1 ;;
+    url) printf 2 ;;
+    sha) printf 3 ;;
+    ref) printf 4 ;;
+    dir) printf 5 ;;
+    name) printf 6 ;;
+    *) printf 9 ;;
+  esac
+}
+
+# pick_scan_text -> see the contract comment above. Pure and
+# side-effect-free beyond the read-only filesystem lookups the handler
+# registry already does; no clipboard read, no pane read, no fzf.
+pick_scan_text() {
+  local line_no=0 line
+  local -A _pk_kind=() _pk_line=()
+  while IFS= read -r line || [ -n "$line" ]; do
+    line_no=$((line_no + 1))
+    local -a spans=()
+    IFS=$' \t' read -ra spans <<<"$line"
+    local raw_span trimmed kind
+    for raw_span in "${spans[@]}"; do
+      [ -z "$raw_span" ] && continue
+      trimmed="$(_pick_trim_span "$raw_span")"
+      [ -z "$trimmed" ] && continue
+      kind="$(_pick_classify_span "$trimmed")"
+      [ -z "$kind" ] && continue
+      _pk_kind["$trimmed"]="$kind"
+      _pk_line["$trimmed"]="$line_no"
+    done
+  done
+  [ "${#_pk_kind[@]}" -eq 0 ] && return 0
+  local token
+  for token in "${!_pk_kind[@]}"; do
+    printf '%s\t%s\t%s\t%s\n' \
+      "$(_pick_tier_rank "${_pk_kind[$token]}")" \
+      "${_pk_line[$token]}" \
+      "$token" \
+      "${_pk_kind[$token]}"
+  done | sort -t $'\t' -k1,1n -k2,2nr | while IFS=$'\t' read -r _ ln tok knd; do
+    printf '%s\t%s\t%s\n' "$tok" "$knd" "$ln"
+  done
+}
+
+# pick_count_header -> reads pick_scan_text's TAB-delimited output on
+# stdin, emits the one-line affordance:
+#   N on screen · A path · B url · C sha · D ref · E dir · F name
+# listing only the NON-ZERO kinds, fixed order, N = total candidates.
+pick_count_header() {
+  local kind total=0
+  local c_path=0 c_url=0 c_sha=0 c_ref=0 c_dir=0 c_name=0
+  while IFS=$'\t' read -r _ kind _; do
+    [ -z "$kind" ] && continue
+    total=$((total + 1))
+    case "$kind" in
+      path) c_path=$((c_path + 1)) ;;
+      url) c_url=$((c_url + 1)) ;;
+      sha) c_sha=$((c_sha + 1)) ;;
+      ref) c_ref=$((c_ref + 1)) ;;
+      dir) c_dir=$((c_dir + 1)) ;;
+      name) c_name=$((c_name + 1)) ;;
+    esac
+  done
+  local -a parts=()
+  [ "$c_path" -gt 0 ] && parts+=("$c_path path")
+  [ "$c_url" -gt 0 ] && parts+=("$c_url url")
+  [ "$c_sha" -gt 0 ] && parts+=("$c_sha sha")
+  [ "$c_ref" -gt 0 ] && parts+=("$c_ref ref")
+  [ "$c_dir" -gt 0 ] && parts+=("$c_dir dir")
+  [ "$c_name" -gt 0 ] && parts+=("$c_name name")
+  printf '%s on screen' "$total"
+  local p
+  for p in "${parts[@]}"; do
+    printf ' · %s' "$p"
+  done
+  printf '\n'
+}
+
+# pick_acquire [pane_id] -> see the contract comment above. The ONE
+# live-dependency wrapper: everything else in this section is the pure
+# core.
+pick_acquire() {
+  local pane_id="${1:-${QUICKLOOK_PICK_ORIGIN_PANE:-}}"
+  if [ -z "$pane_id" ] && command -v jq >/dev/null 2>&1; then
+    pane_id="$("$herdr_bin" pane current 2>/dev/null | jq -r '.result.pane.pane_id // empty' 2>/dev/null)"
+  fi
+  "$herdr_bin" pane read "$pane_id" --source "${QUICKLOOK_PICK_SOURCE:-visible}" --format text 2>/dev/null | pick_scan_text
+}
