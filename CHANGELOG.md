@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- `prefix+shift+p` opens the `pick` overlay: lists every openable token currently on screen (ranked path > url > sha > ref > dir > name) with a count-by-kind header; the clipboard token is preselected as row 1 when it resolves; `Enter` opens the pick through the existing preview overlay, `Esc` closes without opening anything.
+
 ## 0.3.0 (2026-07-17)
 
 - `prefix+shift+y` chains herdr-pluck's hint overlay straight into the preview overlay: pick a token and it opens immediately, no separate keypress to consume the pick. Degrades to the plain clipboard flow when herdr-pluck isn't installed. Demo GIFs for every main use case (token dispatch, the three in-overlay keys, recents, the pluck chain) replace the single preview recording. (#15)

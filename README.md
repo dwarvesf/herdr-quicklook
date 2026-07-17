@@ -62,6 +62,11 @@ command = "herdr plugin action invoke recents --plugin herdr-quicklook"
 key = "prefix+shift+y"
 type = "shell"
 command = "herdr plugin action invoke pluck-chain --plugin herdr-quicklook"
+
+[[keys.command]]              # pick anything openable currently on screen
+key = "prefix+shift+p"
+type = "shell"
+command = "herdr plugin action invoke pick --plugin herdr-quicklook"
 ```
 
 Reload with `herdr server reload-config`.
@@ -90,6 +95,10 @@ The log lives outside any git repo, at `${XDG_STATE_HOME:-~/.local/state}/herdr-
 Pairs this plugin with [herdr-pluck](https://github.com/rmarganti/herdr-pluck) as one action instead of two keystrokes. Press the binding and herdr-pluck's Vimium-style hint labels appear over every copyable token in the pane; type a hint and the picked token opens in the preview overlay immediately, no separate `prefix+v` needed to consume it.
 
 Mechanically, herdr-pluck's only output channel is the system clipboard (there is no other IPC), so the chain fires the pluck action, polls the clipboard for a change, and forwards whatever lands there straight into the preview overlay via the same `QUICKLOOK_TOKEN` channel [agent-push](#agent-push-programmatic-tokens) uses. Without herdr-pluck installed, the binding degrades to the plain clipboard flow (identical to `preview`) instead of doing nothing.
+
+## Pick anything on screen (`prefix+shift+p`)
+
+Lists every openable token currently visible in the pane, ranked by confidence (a resolvable path first, then URLs, commit SHAs, `#refs`, directories, and unique bare filenames last), with a count-by-kind header (`12 on screen · 5 path · 4 url · 2 sha · 1 dir`). If the clipboard already holds a token that resolves, it is preselected as row 1 (labeled `clipboard: <token>`) and deduped out of the on-screen list below it. `Enter` opens the highlighted pick through the same preview overlay as every other open; `Esc` closes without opening anything. With no [`fzf`](https://github.com/junegunn/fzf) installed, the top row opens directly, no interactive step.
 
 ## Configuration
 
