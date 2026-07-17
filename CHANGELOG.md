@@ -2,8 +2,9 @@
 
 ## Unreleased
 
-- `prefix+shift+p` opens the `pick` overlay: lists every openable token currently on screen (ranked path > url > sha > ref > dir > name) with a count-by-kind header; the clipboard token is preselected as row 1 when it resolves; `Enter` opens the pick through the existing preview overlay, `Esc` closes without opening anything.
-- `pluck-chain`'s degrade now routes to the native pick overlay; herdr-pluck fully optional.
+- New `pick` action: lists every openable token currently on screen, no cap (ranked path > url > sha > ref > dir > name) with a count-by-kind header (`N on screen · A path · B url · ...`); the clipboard token is preselected as row 1 when it resolves; `Enter` opens the pick through the existing preview overlay, `Esc` closes without opening anything. Runs on any bash, including macOS's own `/bin/bash` (3.2) - the scan's tokenize/dedup/rank pipeline is awk-based rather than leaning on bash 4.3-only `local -n`/`local -A`.
+- **Recommended keybinding**: `prefix+v` now points at `pick` instead of `preview` - `pick` needs no other plugin and is a superset of the old clipboard-only open; `preview` is still a valid action id to bind directly if you want the old behavior back.
+- `pluck-chain`'s degrade (herdr-pluck absent, or its own invoke fails) now reroutes straight into the `pick` overlay instead of polling a clipboard that would never change; herdr-pluck stays fully optional.
 
 ## 0.3.0 (2026-07-17)
 

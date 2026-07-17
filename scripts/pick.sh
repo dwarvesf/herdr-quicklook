@@ -29,7 +29,9 @@ if command -v jq >/dev/null 2>&1; then
 fi
 if [ -z "$origin_pane" ] && [ -n "$ctx" ] && command -v jq >/dev/null 2>&1; then
   # Fallback when `pane current` is unavailable: the context JSON's own
-  # focused-pane field, same shape as the .focused_pane_cwd fallback below.
+  # focused-pane field. Field name live-verified against a real
+  # HERDR_PLUGIN_CONTEXT_JSON payload (2026-07-17, see DECISIONS.md):
+  # `.focused_pane_id` is correct, matching `.focused_pane_cwd` below.
   origin_pane="$(printf '%s' "$ctx" | jq -r '.focused_pane_id // empty' 2>/dev/null || true)"
 fi
 

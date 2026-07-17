@@ -1,6 +1,6 @@
 # demo/
 
-Four GIFs, recorded from a real herdr session with [vhs](https://github.com/charmbracelet/vhs),
+Five GIFs, recorded from a real herdr session with [vhs](https://github.com/charmbracelet/vhs),
 covering every main use case:
 
 | GIF | Shows |
@@ -9,6 +9,7 @@ covering every main use case:
 | `overlay-keys-tour.gif` | The three in-overlay keys: `d` (dirty-diff toggle), `e` (edit in `$EDITOR`), `o` (escalate to herdr-file-viewer) |
 | `recents.gif` | `prefix+shift+v`: fzf-pick an older entry, proving the reopen bumps it back to the front |
 | `pluck-full-flow.gif` | The one-key pluck chain: herdr-pluck's hint overlay pops, pick a token, quick-look opens it immediately, no extra keypress |
+| `pick-anywhere.gif` | `prefix+v` on a busy pane (real commits, `ls`, a URL): `pluck-chain` reroutes into the native `pick` overlay (herdr-pluck not linked), the count header (`N on screen · A path · B url · ...`) is visible, a pick opens in the preview overlay. Plus the negative control: an empty pane and an empty clipboard yield the honest `quicklook: nothing openable on screen` instead of a crash or silent no-op |
 
 ## Recording
 
@@ -26,6 +27,12 @@ vhs demo/overlay-keys-d.tape     # writes demo/clip-d.gif
 vhs demo/overlay-keys-e.tape     # writes demo/clip-e.gif (needs herdr-file-viewer)
 vhs demo/overlay-keys-o.tape     # writes demo/clip-o.gif (needs herdr-file-viewer)
 gifsicle --colors 256 demo/clip-d.gif demo/clip-e.gif demo/clip-o.gif > demo/overlay-keys-tour.gif
+
+# pick-anywhere.gif is two short takes (the main flow, then the negative
+# control) concatenated with gifsicle, same reason as overlay-keys-tour.gif:
+vhs demo/pick-anywhere-main.tape   # writes demo/pick-anywhere-main.gif
+vhs demo/pick-anywhere-empty.tape  # writes demo/pick-anywhere-empty.gif
+gifsicle --colors 256 demo/pick-anywhere-main.gif demo/pick-anywhere-empty.gif > demo/pick-anywhere.gif
 ```
 
 `Output` paths in a `.tape` are relative to wherever `vhs` itself is invoked from, not
@@ -78,3 +85,25 @@ the tape file's own directory - always `cd` into the checkout first.
 - Stray herdr sessions accumulate on the server across recording attempts (harmless but
   should be cleaned up): `herdr session list` then `herdr session stop <name>` for any
   `demo-*`/`clip-*` session left `running`.
+- **`git log` (no flags) opens a real `less` pager and eats every keystroke typed
+  after it** - `pick-anywhere-main.tape` types `ls` and a `printf ... | ` URL command
+  right after populating the busy screen; without `--no-pager`, those characters get
+  interpreted as `less` navigation/search keys instead of shell input (confirmed:
+  typing `ls` inside `less` opened its help screen). Always `git --no-pager log ...`
+  in a tape, never bare `git log`.
+- **`pick-anywhere.gif`'s reroute is the REAL production fallback, not a synthetic
+  shortcut**: Han's shipped `config.toml` binds `prefix+v` to `pluck-chain`. Neither
+  take links `herdr-pluck` into its fresh session, so `pluck-chain`'s own
+  soft-dependency check fires for real and reroutes into the native `pick` action -
+  the exact path a user with only herdr-quicklook installed hits every time. The
+  toast ("herdr-pluck failed to open; opening the pick-anywhere overlay") is real
+  herdr notification output, not staged text.
+- **verified**: one-dark theme (both takes), main take shows a genuinely busy pane
+  (3 real commit SHAs via `git --no-pager log`, real repo file/dir names via `ls`, a
+  real URL); this take's count header renders `18 on screen · 8 path · 1 url · 3
+  sha · 3 dir · 3 name` (what THIS specific recording's busy pane produced, not a
+  general capacity figure - `pick` has no cap), and a real pick (`LICENSE`) opens
+  in the preview overlay; negative control shows the honest `quicklook: nothing
+  openable on screen` on a cleared pane with an empty clipboard. No internal paths
+  beyond the scratch clone's own `/private/tmp/demo/...` directory name; no
+  client/Dwarves data.

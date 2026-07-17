@@ -444,9 +444,10 @@ resolve_any_token() {
 # and each dir/path/name check forked its own `git worktree list`/`git
 # rev-parse`/`git ls-files` - O(spans x subprocesses), measured 13.5s on a
 # normal 40x15 screen and 1m54s on 500 lines. Fixed two ways:
-#   1. Spans are DEDUPED FIRST (one line-tracking pass over the whole
-#      screen), THEN each UNIQUE span is classified exactly once -
-#      classification cost no longer scales with repeat occurrences.
+#   1. Spans are DEDUPED FIRST (one awk pass over the whole screen: tokenize
+#      + trim + dedup, keeping the bottom-most line-no per unique span),
+#      THEN each UNIQUE span is classified exactly once - classification
+#      cost no longer scales with repeat occurrences.
 #   2. Every dir/path/github/name check that would otherwise fork `git` is
 #      answered by a SCAN-LOCAL PURE PREDICATE (_pick_resolve_local,
 #      _pick_resolve_dir_local, _pick_resolve_github_local,
@@ -464,6 +465,28 @@ resolve_any_token() {
 #      /handle_bare_name at all, it never touches RESOLVED_TARGET/
 #      RESOLVED_LINE/RESOLVED_MODE/RESOLVED_CMD/CLIP_PATH/CLIP_LINE either
 #      - see the purity note below.
+#
+# BASH 3.2 REWRITE (gate review, superseding the bash>=4.3 guard): the
+# tokenize/trim/dedup pass and the final rank/sort used to lean on bash 4.3
+# `local -n` namerefs (to avoid forking a subshell per span) and bash 4.0
+# `local -A` associative arrays (for the dedup/kind maps) - unavailable on
+# macOS's own `/bin/bash` (3.2, last GPLv2 release). Rewritten to keep the
+# SAME zero-fork-per-span property on any bash >= 3.2:
+#   - Tokenize + trim + dedup is now ONE awk process (a single pass over
+#     the whole screen, not a bash loop calling a nameref-based helper once
+#     per raw span) - see Pass 1 in pick_scan_text below.
+#   - Classification still runs once per UNIQUE span in bash (the
+#     filesystem-aware predicates above need it), but _pick_classify_span
+#     now writes its result to a fixed-name global (_PICK_CLASSIFY_KIND)
+#     instead of a caller-supplied `local -n` outvar - a plain function
+#     call, no subshell, no nameref, and it has exactly one caller so a
+#     fixed output variable costs nothing.
+#   - The final tier/sort ranking is an awk + `sort` + awk pipeline instead
+#     of a bash `local -A` map and a bash `printf`-per-token sort-key loop.
+#   Net effect: no bash-version guard needed any more - pick-pane.sh no
+#   longer checks $BASH_VERSINFO before calling pick_acquire. See
+#   DECISIONS.md (ops-toolkit) for the measured before/after on both a
+#   modern bash and macOS's real bash 3.2.
 #
 # PURITY: pick_scan_text never mutates a global. It does not call
 # parse_token, handle_path, handle_dir, handle_github, handle_vcs, or
@@ -540,51 +563,6 @@ resolve_any_token() {
 # dir > name; within a tier, larger line-no first, then raw-token
 # lexicographic ascending).
 # -----------------------------------------------------------------------
-
-# _pick_trim_span <span> <outvar> -> writes <span> into the CALLER's
-# <outvar> (a nameref, no stdout/command-substitution) with wrapping
-# punctuation (matched quotes/parens/brackets/braces/backticks/angle
-# brackets) and trailing `:,;.` stripped, in whichever order applies - the
-# two passes alternate until neither changes anything, so a sentence-final
-# period OUTSIDE a quoted path ("src/f.md".) and one trapped INSIDE a
-# wrapper (src/f.md.)) both come off. The trailing-punct pass can never
-# eat into a real file extension: it only ever removes from the rightmost
-# position and stops the instant that position is not one of `:,;.` (e.g.
-# "lib.sh." -> "lib.sh", stopping at "h" - the ".sh" extension is
-# untouched).
-#
-# nameref, not `printf`+`$(...)`, is deliberate: pick_scan_text calls this
-# once per RAW span (before dedup), and bash forks a real subshell for
-# EVERY command substitution even when the command is a pure bash function
-# with zero external commands inside it (measured: 6500 command-sub calls
-# = ~2s of pure fork overhead vs ~0s for the equivalent nameref calls) -
-# see the CRITICAL fix round 2 in DECISIONS.md. This was the dominant cost
-# left after hoisting the git calls; the tokenizer runs on every raw span,
-# not just the deduped ones, so it is the hottest path in the scan.
-_pick_trim_span() {
-  local -n _pts_out="$2"
-  local s="$1" prev
-  while true; do
-    prev="$s"
-    while [ -n "$s" ]; do
-      case "${s: -1}" in
-        : | , | ';' | .) s="${s%?}" ;;
-        *) break ;;
-      esac
-    done
-    case "$s" in
-      '"'?*'"') s="${s#\"}"; s="${s%\"}" ;;
-      "'"?*"'") s="${s#\'}"; s="${s%\'}" ;;
-      '('?*')') s="${s#\(}"; s="${s%\)}" ;;
-      '['?*']') s="${s#\[}"; s="${s%\]}" ;;
-      '{'?*'}') s="${s#\{}"; s="${s%\}}" ;;
-      '<'?*'>') s="${s#<}"; s="${s%>}" ;;
-      '`'?*'`') s="${s#\`}"; s="${s%\`}" ;;
-    esac
-    [ "$s" = "$prev" ] && break
-  done
-  _pts_out="$s"
-}
 
 # _pick_strip_ansi -> reads stdin, writes stdout with every CSI (`ESC [
 # ... letter`) and OSC (`ESC ] ... BEL`) escape sequence removed, in ONE
@@ -697,6 +675,24 @@ _pick_resolve_github_local() {
   return 1
 }
 
+# _pick_lower <str> -> writes the lowercased string into the fixed global
+# _PICK_LOWER_RESULT. Bash 3.2 (macOS system bash) has no `${var,,}`
+# case-conversion operator (bash 4.0+) - this is the fork-free replacement,
+# an unrolled `${s//X/x}` pattern-substitution per letter (26 pure-bash
+# substitutions, no subprocess). Only ever called on a single SPAN (short),
+# never on the whole hoisted file list - see _pick_bare_name_hit_local,
+# which lowercases that list ONCE with a single `tr` instead.
+_pick_lower() {
+  local s="$1"
+  s="${s//A/a}"; s="${s//B/b}"; s="${s//C/c}"; s="${s//D/d}"; s="${s//E/e}"
+  s="${s//F/f}"; s="${s//G/g}"; s="${s//H/h}"; s="${s//I/i}"; s="${s//J/j}"
+  s="${s//K/k}"; s="${s//L/l}"; s="${s//M/m}"; s="${s//N/n}"; s="${s//O/o}"
+  s="${s//P/p}"; s="${s//Q/q}"; s="${s//R/r}"; s="${s//S/s}"; s="${s//T/t}"
+  s="${s//U/u}"; s="${s//V/v}"; s="${s//W/w}"; s="${s//X/x}"; s="${s//Y/y}"
+  s="${s//Z/z}"
+  _PICK_LOWER_RESULT="$s"
+}
+
 # _pick_bare_name_hit_local <clip_path> -> rc 0 iff <clip_path> is a
 # UNIQUE case-insensitive substring match against this scan's HOISTED
 # _PICK_LSFILES (one `git ls-files` invocation for the whole scan, not one
@@ -712,22 +708,35 @@ _pick_resolve_github_local() {
 # which is a single subprocess per UNIQUE unresolved span - fine for a
 # handful of bare-name candidates, but a 500-line screen has hundreds of
 # unique non-path words that all fall through to here, and forking grep
-# for each one alone cost ~5s (measured). Looping `[[ == *needle* ]]` over
+# for each one alone cost ~5s (measured). Looping a `case` glob match over
 # the hoisted file list in-process removed that fork entirely; an early
 # return the instant a SECOND match is seen keeps the common "ambiguous"
 # case cheap too. See DECISIONS.md "SG-01 CRITICAL fix, round 2".
+#
+# Case-folding: the ORIGINAL implementation lowercased every LINE of the
+# file list INSIDE this loop (`${line,,}`, bash 4.0+) - once per unresolved
+# span, i.e. O(files x unresolved-spans) lowering work even under a modern
+# bash. Neither `${line,,}` (bash 4+) nor a per-line `tr` fork belongs on
+# bash 3.2 or in a hot loop, so the file list is lowercased into
+# _PICK_LSFILES_LOWER ONCE for the whole scan (pick_scan_text's hoist
+# step, a single `tr` call) and this function only ever lowercases the
+# short per-span needle (_pick_lower, no fork) - a net perf win on top of
+# the bash 3.2 fix.
 _pick_bare_name_hit_local() {
   local clip_path="$1" needle line n=0
   [ -n "$clip_path" ] || return 1
   [ -n "$_PICK_ROOT" ] || return 1
-  needle="${clip_path,,}"
+  _pick_lower "$clip_path"
+  needle="$_PICK_LOWER_RESULT"
   while IFS= read -r line; do
     [ -z "$line" ] && continue
-    if [[ "${line,,}" == *"$needle"* ]]; then
-      n=$((n + 1))
-      [ "$n" -gt 1 ] && return 1
-    fi
-  done <<<"$_PICK_LSFILES"
+    case "$line" in
+      *"$needle"*)
+        n=$((n + 1))
+        [ "$n" -gt 1 ] && return 1
+        ;;
+    esac
+  done <<<"$_PICK_LSFILES_LOWER"
   [ "$n" -eq 1 ]
 }
 
@@ -748,8 +757,8 @@ _pick_match_kind() {
   esac
 }
 
-# _pick_classify_span <span> <outvar> -> writes one of path url sha ref
-# dir name into the CALLER's <outvar> (a nameref), or leaves it EMPTY (a
+# _pick_classify_span <span> -> writes one of path url sha ref dir name
+# into the fixed global _PICK_CLASSIFY_KIND, or clears it to empty (a
 # dropped span) - see the contract comment above. Walks the LIVE
 # HANDLER_KINDS array (via _pick_match_kind) to decide which handler wins,
 # then resolves using the scan-local pure predicates above - never
@@ -758,14 +767,16 @@ _pick_match_kind() {
 # note above). Relies on _PICK_ROOT/_PICK_WORKTREES/_PICK_LSFILES being
 # set by the caller (pick_scan_text, via bash dynamic scoping).
 #
-# nameref, not `printf`+`$(...)`, for the SAME reason _pick_trim_span is:
-# this runs once per UNIQUE span, still hundreds on a busy screen, and a
-# command substitution forks even for a pure-bash function - see the
-# CRITICAL fix round 2 in DECISIONS.md.
+# Fixed-name global, not a `local -n` outvar: `local -n` is bash 4.3+ and
+# macOS ships bash 3.2 at /bin/bash. pick_scan_text is this function's only
+# caller (runs it once per UNIQUE span, still hundreds on a busy screen),
+# so a plain global costs nothing here and keeps the call a direct function
+# call - no subshell, no command-substitution fork - see the BASH 3.2
+# REWRITE note above and the CRITICAL fix round 2 in DECISIONS.md for why
+# that fork-per-call cost mattered in the first place.
 _pick_classify_span() {
-  local -n _pcs_out="$2"
   local span="$1" hkind matched=1
-  _pcs_out=""
+  _PICK_CLASSIFY_KIND=""
   for hkind in "${HANDLER_KINDS[@]}"; do
     if _pick_match_kind "$hkind" "$span"; then
       matched=0
@@ -782,78 +793,108 @@ _pick_classify_span() {
         *) mapper=map_github_url ;;
       esac
       if "$mapper" "$span" && _pick_resolve_github_local "$GH_REPO" "$GH_REST" >/dev/null; then
-        _pcs_out='path'
+        _PICK_CLASSIFY_KIND='path'
       else
-        _pcs_out='url'
+        _PICK_CLASSIFY_KIND='url'
       fi
       ;;
     vcs)
       if [[ "$span" =~ $_VCS_SHA_RE ]]; then
-        _pcs_out='sha'
+        _PICK_CLASSIFY_KIND='sha'
       else
-        _pcs_out='ref'
+        _PICK_CLASSIFY_KIND='ref'
       fi
       ;;
-    url) _pcs_out='url' ;;
-    dir) _pcs_out='dir' ;;
+    url) _PICK_CLASSIFY_KIND='url' ;;
+    dir) _PICK_CLASSIFY_KIND='dir' ;;
     path)
       local clip_path="$span"
       [[ "$span" =~ ^(.+):([0-9]+)$ ]] && clip_path="${BASH_REMATCH[1]}"
       if _pick_resolve_local "$clip_path" >/dev/null; then
-        _pcs_out='path'
+        _PICK_CLASSIFY_KIND='path'
       elif _pick_bare_name_hit_local "$clip_path"; then
-        _pcs_out='name'
+        _PICK_CLASSIFY_KIND='name'
       fi
       ;;
-  esac
-}
-
-# _pick_tier_rank <kind> -> a numeric sort key, lower = higher confidence.
-_pick_tier_rank() {
-  case "$1" in
-    path) printf 1 ;;
-    url) printf 2 ;;
-    sha) printf 3 ;;
-    ref) printf 4 ;;
-    dir) printf 5 ;;
-    name) printf 6 ;;
-    *) printf 9 ;;
   esac
 }
 
 # pick_scan_text -> see the contract comment above. Pure and
 # side-effect-free beyond the read-only filesystem lookups the handler
 # registry already does; no clipboard read, no pane read, no fzf, no
-# global mutation (see the PURITY note above).
+# global mutation (see the PURITY note above). Runs on any bash >= 3.2 -
+# see the BASH 3.2 REWRITE note above.
 pick_scan_text() {
   local screen
   screen="$(_pick_strip_ansi)"
 
-  # Pass 1: tokenize the WHOLE screen and dedup BEFORE classification -
-  # each unique span is classified exactly once below, never once per
-  # occurrence (see the PERFORMANCE note above).
-  local line_no=0 line
-  local -A _pk_line=()
-  while IFS= read -r line || [ -n "$line" ]; do
-    line_no=$((line_no + 1))
-    local -a spans=()
-    IFS=$' \t' read -ra spans <<<"$line"
-    local raw_span trimmed
-    for raw_span in "${spans[@]}"; do
-      [ -z "$raw_span" ] && continue
-      _pick_trim_span "$raw_span" trimmed
-      [ -z "$trimmed" ] && continue
-      _pk_line["$trimmed"]="$line_no"
-    done
-  done <<<"$screen"
+  # Pass 1 (one awk process): tokenize every line into whitespace-split
+  # spans, trim wrapping punctuation (matched quotes/parens/brackets/
+  # braces/backticks/angle-brackets) and trailing `:,;.`, alternating until
+  # neither pass changes anything (same rule the old bash _pick_trim_span
+  # used - a sentence-final period OUTSIDE a quoted path ("src/f.md".) and
+  # one trapped INSIDE a wrapper (src/f.md.)) both come off; the
+  # trailing-punct strip can never eat into a real extension, since it only
+  # ever removes from the rightmost position and stops the instant that
+  # position isn't `:,;.`), then dedup: the SAME trimmed span seen more
+  # than once keeps only its BOTTOM-MOST (largest) line-no, which falls
+  # out for free from overwriting `seen[token]` on every repeat while
+  # walking the screen top to bottom. Output: `<line-no>\t<token>` per
+  # unique span. One awk process replaces what used to be a bash loop
+  # calling a `local -n`-based helper once per RAW span (6500+ calls on a
+  # busy screen) - see the BASH 3.2 REWRITE note above.
+  local dedup
+  dedup="$(printf '%s\n' "$screen" | awk -v OFS=$'\t' '
+    BEGIN {
+      sq = sprintf("%c", 39); dq = sprintf("%c", 34); bq = sprintf("%c", 96)
+    }
+    function trim(s,    prev, c, first, last) {
+      while (1) {
+        prev = s
+        while (length(s) > 0) {
+          c = substr(s, length(s), 1)
+          if (c == ":" || c == "," || c == ";" || c == ".") {
+            s = substr(s, 1, length(s) - 1)
+          } else break
+        }
+        if (length(s) >= 3) {
+          first = substr(s, 1, 1); last = substr(s, length(s), 1)
+          if ((first == dq && last == dq) || (first == sq && last == sq) ||
+              (first == "(" && last == ")") || (first == "[" && last == "]") ||
+              (first == "{" && last == "}") || (first == "<" && last == ">") ||
+              (first == bq && last == bq)) {
+            s = substr(s, 2, length(s) - 2)
+          }
+        }
+        if (s == prev) break
+      }
+      return s
+    }
+    {
+      line_no++
+      n = split($0, spans, /[ \t]+/)
+      for (i = 1; i <= n; i++) {
+        if (spans[i] == "") continue
+        t = trim(spans[i])
+        if (t == "") continue
+        seen[t] = line_no
+      }
+    }
+    END {
+      for (tok in seen) print seen[tok], tok
+    }
+  ')"
 
-  [ "${#_pk_line[@]}" -eq 0 ] && return 0
+  [ -z "$dedup" ] && return 0
 
   # Hoist repo state ONCE for the whole scan, not once per span (see the
-  # PERFORMANCE note above): _PICK_ROOT/_PICK_WORKTREES/_PICK_LSFILES are
-  # `local` here, so bash's dynamic scoping makes them visible to every
-  # _pick_*_local predicate called below without passing them explicitly.
-  local _PICK_ROOT _PICK_LSFILES=""
+  # PERFORMANCE note above): _PICK_ROOT/_PICK_WORKTREES/_PICK_LSFILES/
+  # _PICK_LSFILES_LOWER are `local` here, so bash's dynamic scoping makes
+  # them visible to every _pick_*_local predicate called below without
+  # passing them explicitly. _PICK_LSFILES_LOWER (a single `tr` pass, bash
+  # 3.2 has no `${var,,}`) lets _pick_bare_name_hit_local do its
+  # case-insensitive match with no per-line lowering - see its comment.
+  local _PICK_ROOT _PICK_LSFILES="" _PICK_LSFILES_LOWER=""
   local -a _PICK_WORKTREES=()
   _PICK_ROOT="$(git rev-parse --show-toplevel 2>/dev/null)"
   if [ -n "$_PICK_ROOT" ]; then
@@ -862,29 +903,42 @@ pick_scan_text() {
       _PICK_WORKTREES+=("$w")
     done < <(git worktree list --porcelain 2>/dev/null | awk '/^worktree /{print $2}')
     _PICK_LSFILES="$(git -C "$_PICK_ROOT" ls-files 2>/dev/null)"
+    _PICK_LSFILES_LOWER="$(printf '%s' "$_PICK_LSFILES" | tr '[:upper:]' '[:lower:]')"
   fi
 
-  # Pass 2: classify each unique span exactly once.
-  local -A _pk_kind=()
-  local token kind
-  for token in "${!_pk_line[@]}"; do
-    _pick_classify_span "$token" kind
-    [ -n "$kind" ] && _pk_kind["$token"]="$kind"
-  done
+  # Pass 2: classify each unique span exactly once (still bash - the
+  # filesystem-aware _pick_*_local predicates above need it).
+  # _pick_classify_span writes its result to the fixed global
+  # _PICK_CLASSIFY_KIND (a direct function call, no fork - see its comment
+  # above), so this loop stays zero-subprocess-per-span same as before.
+  local ranked="" ln tok kind
+  while IFS=$'\t' read -r ln tok; do
+    [ -z "$tok" ] && continue
+    _pick_classify_span "$tok"
+    kind="$_PICK_CLASSIFY_KIND"
+    [ -n "$kind" ] || continue
+    ranked+="$ln"$'\t'"$tok"$'\t'"$kind"$'\n'
+  done <<<"$dedup"
 
-  [ "${#_pk_kind[@]}" -eq 0 ] && return 0
+  [ -z "$ranked" ] && return 0
 
-  # Pass 3: rank (tier asc, line-no desc, raw-token asc as a deterministic
-  # tertiary tiebreak - see the Rank note above) and emit.
-  for token in "${!_pk_kind[@]}"; do
-    printf '%s\t%s\t%s\t%s\n' \
-      "$(_pick_tier_rank "${_pk_kind[$token]}")" \
-      "${_pk_line[$token]}" \
-      "$token" \
-      "${_pk_kind[$token]}"
-  done | sort -t $'\t' -k1,1n -k2,2nr -k3,3 | while IFS=$'\t' read -r _ ln tok knd; do
-    printf '%s\t%s\t%s\n' "$tok" "$knd" "$ln"
-  done
+  # Pass 3 (awk + sort + awk): tier rank ascending (path > url > sha > ref
+  # > dir > name), line-no descending (closer to the bottom first),
+  # raw-token lexicographic ascending as the deterministic third tiebreak -
+  # same order the old bash `local -A` map + sort-key loop produced,
+  # computed here without a bash associative array.
+  printf '%s' "$ranked" | awk -F'\t' -v OFS=$'\t' '
+    function tier(k) {
+      if (k == "path") return 1
+      if (k == "url") return 2
+      if (k == "sha") return 3
+      if (k == "ref") return 4
+      if (k == "dir") return 5
+      if (k == "name") return 6
+      return 9
+    }
+    { print tier($3), $1, $2, $3 }
+  ' | sort -t $'\t' -k1,1n -k2,2nr -k3,3 | awk -F'\t' -v OFS=$'\t' '{ print $3, $4, $2 }'
 }
 
 # pick_count_header -> reads pick_scan_text's TAB-delimited output on
