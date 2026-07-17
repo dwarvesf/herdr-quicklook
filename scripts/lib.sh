@@ -190,8 +190,8 @@ recents_latest() {
 # Optional config: QUICKLOOK_ROOTS, colon-separated extra roots to try for
 # relative paths (e.g. the parent directory holding all your repos).
 load_config() {
-  local dir
-  dir="$("$herdr_bin" plugin config-dir herdr-quicklook 2>/dev/null)"
+  local dir="${HERDR_PLUGIN_CONFIG_DIR:-}"
+  [ -n "$dir" ] || dir="$("$herdr_bin" plugin config-dir herdr-quicklook 2>/dev/null)"
   # shellcheck disable=SC1091
   [ -n "$dir" ] && [ -f "$dir/.env" ] && . "$dir/.env"
 }
@@ -223,6 +223,36 @@ classify_token() {
 urldecode() {
   local s="${1//\\/\\\\}"
   printf '%b' "${s//\%/\\x}"
+}
+
+QUICKLOOK_LINK_PREFIX='https://herdr-quicklook.invalid/open?token='
+
+quicklook_link_uri() {
+  local token="${1:-}" encoded
+  [ -n "$token" ] || return 1
+  [[ "$token" =~ [[:cntrl:]] ]] && return 1
+  command -v jq >/dev/null 2>&1 || return 1
+  encoded="$(jq -rn --arg token "$token" '$token | @uri')" || return 1
+  [ -n "$encoded" ] || return 1
+  printf '%s%s' "$QUICKLOOK_LINK_PREFIX" "$encoded"
+}
+
+quicklook_token_from_link() {
+  local uri="${1:-}" encoded token canonical
+  case "$uri" in
+    "$QUICKLOOK_LINK_PREFIX"*) encoded="${uri#"$QUICKLOOK_LINK_PREFIX"}" ;;
+    *) return 1 ;;
+  esac
+  [ -n "$encoded" ] || return 1
+  case "$encoded" in
+    *'&'* | *'#'*) return 1 ;;
+  esac
+  token="$(urldecode "$encoded")" || return 1
+  [ -n "$token" ] || return 1
+  [[ "$token" =~ [[:cntrl:]] ]] && return 1
+  canonical="$(quicklook_link_uri "$token")" || return 1
+  [ "$canonical" = "$uri" ] || return 1
+  printf '%s' "$token"
 }
 
 # map_github_url <url>: extract GH_REPO, GH_REST (ref/path, decoded), GH_LINE.

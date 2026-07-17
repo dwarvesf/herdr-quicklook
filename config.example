@@ -1,7 +1,7 @@
 # herdr-quicklook configuration (all optional).
 # Copy this file as `.env` into the directory printed by:
 #   herdr plugin config-dir herdr-quicklook
-# Without a .env the plugin works with defaults; this file only ADDS lookup roots.
+# Without a .env the plugin works with defaults; every setting here is optional.
 
 # QUICKLOOK_ROOTS: extra directories to try when a copied path does not exist
 # under the current pane directory or repo. Colon-separated.
@@ -18,3 +18,14 @@
 # interactive shell's exported vars, so a config value here is the reliable
 # path (the same reason QUICKLOOK_ROOTS lives here instead of relying on env).
 #QUICKLOOK_EDITOR="zed --wait"
+
+# QUICKLOOK_AGENT_SUGGESTIONS: react to herdr's agent-status event without a
+# polling daemon. "notify" stores the best token produced during the latest
+# turn and shows a herdr notification; "preview" also opens it immediately.
+# Defaults to "off" because immediate previews can interrupt another pane.
+# It uses the same Bash 3.2-compatible scanner as `pick` and `linkify`.
+#QUICKLOOK_AGENT_SUGGESTIONS="notify"
+
+# QUICKLOOK_AGENT_SCAN_LINES: recent-unwrapped lines retained for the working
+# baseline and completion diff. Invalid values fall back to 300.
+#QUICKLOOK_AGENT_SCAN_LINES=300
