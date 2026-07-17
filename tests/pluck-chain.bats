@@ -1,10 +1,16 @@
 #!/usr/bin/env bats
 # Script-level tests for scripts/pluck-chain.sh: the herdr-pluck-absent
-# fallback, a successful pick forwarded with no extra keypress, and the
-# no-selection (cancel/timeout) degrade. A stub `herdr` plays both the
-# "is herdr-pluck installed" probe and the pick itself (writing a new value
-# into a fake clipboard file, the same side effect pluck's own pbcopy has);
-# a stub `pbpaste` reads that file so no real system clipboard is touched.
+# reroute, the invoke-failure reroute, a successful pick forwarded with no
+# extra keypress, and the no-selection (cancel/timeout) degrade. A stub
+# `herdr` plays the "is herdr-pluck installed" probe, the pluck invoke
+# itself (writing a new value into a fake clipboard file, the same side
+# effect pluck's own pbcopy has), and falls through to echoing argv for any
+# other invocation (including the `pick` action-invoke reroute below, so its
+# argv is directly assertable without scripts/pick.sh needing to exist in
+# this worktree - SG-02 owns that file); a stub `pbpaste` reads the fake
+# clipboard file so no real system clipboard is touched. PATH is pinned to
+# just $STUB (no /opt/homebrew/bin, no system herdr/pbpaste) so a real
+# herdr-pluck or pbpaste installed on the dev machine can never leak in.
 
 setup() {
   SCRIPT="$BATS_TEST_DIRNAME/../scripts/pluck-chain.sh"
@@ -22,10 +28,12 @@ elif [ "$1" = "plugin" ] && [ "$2" = "action" ] && [ "$3" = "invoke" ] && [ "$4"
   if [ -n "${PLUCK_PICK_VALUE+x}" ]; then
     printf '%s' "$PLUCK_PICK_VALUE" > "$CLIP_FILE"
   fi
-  exit 0
+  exit "${PLUCK_INVOKE_EXIT:-0}"
 elif [ "$1" = "notification" ]; then
   exit 0
 else
+  # Catch-all, including `plugin action invoke pick --plugin herdr-quicklook`
+  # (the reroute): echo argv so the caller's exact invocation is assertable.
   printf '%s\n' "$@"
 fi
 SH
@@ -37,23 +45,34 @@ cat "$CLIP_FILE"
 SH
   chmod +x "$STUB/pbpaste"
 
-  PATH="$STUB:$PATH"
+  # Deliberately NOT /opt/homebrew/bin (see NOTES.md's PATH-stub gotcha):
+  # keeps a real herdr-pluck-adjacent binary from ever being reachable.
+  # git/awk/sleep/mktemp/cat resolve fine from /usr/bin:/bin:/usr/local/bin
+  # alone; `herdr` itself is always the stub via HERDR_BIN_PATH regardless.
+  PATH="$STUB:/usr/bin:/bin:/usr/local/bin"
   export PATH HERDR_BIN_PATH="$STUB/herdr" CLIP_FILE
   # Fast polling for every test; individual tests still override the
   # timeout where they need more than one iteration's worth of headroom.
   export QUICKLOOK_PLUCK_POLL_INTERVAL=0
   export QUICKLOOK_PLUCK_TIMEOUT=0.3
-  unset HERDR_PLUGIN_CONTEXT_JSON HERDR_WORKSPACE_CWD PLUCK_PICK_VALUE
+  unset HERDR_PLUGIN_CONTEXT_JSON HERDR_WORKSPACE_CWD PLUCK_PICK_VALUE PLUCK_INVOKE_EXIT
 }
 
 teardown() { rm -rf "$STUB"; }
 
-@test "pluck-chain: herdr-pluck absent -> degrades to the plain clipboard flow, no pluck invoke" {
+@test "pluck-chain: herdr-pluck absent -> reroutes to the native pick action, no pluck invoke" {
   export PLUCK_INSTALLED_EXIT=1
   run bash "$SCRIPT"
   [ "$status" -eq 0 ]
-  grep -q -- 'pane' <<<"$output"
-  ! grep -q -- '--env' <<<"$output"
+  [ "$output" = "$(printf 'plugin\naction\ninvoke\npick\n--plugin\nherdr-quicklook')" ]
+}
+
+@test "pluck-chain: herdr-pluck present but triggering it fails -> reroutes to the native pick action" {
+  export PLUCK_INSTALLED_EXIT=0
+  export PLUCK_INVOKE_EXIT=1
+  run bash "$SCRIPT"
+  [ "$status" -eq 0 ]
+  [ "$output" = "$(printf 'plugin\naction\ninvoke\npick\n--plugin\nherdr-quicklook')" ]
 }
 
 @test "pluck-chain: a pick lands on the clipboard -> forwarded to the preview overlay, no extra keypress" {

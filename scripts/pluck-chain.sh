@@ -1,8 +1,10 @@
 #!/usr/bin/env bash
 # Action `pluck-chain`: show herdr-pluck's hint overlay, then open the picked
 # token immediately in the preview overlay - no separate keypress to consume
-# it. Degrades to the plain clipboard flow (identical to the `preview`
-# action) when herdr-pluck is not installed.
+# it. herdr-pluck is a pure enhancement with NO hard dependency: when it is
+# not installed, or when triggering it fails, this reroutes to the native
+# `pick` action (scan-the-pane, pick-anywhere) instead of the plain clipboard
+# flow, so the same key always lands on a working pick-anywhere experience.
 #
 # herdr-pluck's ONLY output channel is the system clipboard (confirmed in its
 # own README/source: pbcopy/wl-copy/xclip, no other IPC), and its `open`
@@ -13,7 +15,8 @@
 # straight into open-preview.sh's existing QUICKLOOK_TOKEN channel. See
 # DECISIONS.md for the "no clipboard hop" framing and the one disclosed edge
 # case (re-picking a value already on the clipboard is indistinguishable from
-# "nothing picked").
+# "nothing picked"), and for why the reroute below targets the `pick` PLUGIN
+# ACTION id rather than execing scripts/pick.sh directly.
 set -u
 
 script_dir="$(cd "$(dirname "${BASH_SOURCE[0]:-$0}")" && pwd)"
@@ -30,17 +33,29 @@ clip_read_now() {
   fi 2>/dev/null
 }
 
+# The one reroute arm: invoked both when herdr-pluck is absent and when
+# triggering it fails. Targets the `pick` action by ID (not
+# `scripts/pick.sh` by path) so this script never needs to know where that
+# script lives or whether it exists yet.
+reroute_to_pick() {
+  exec "$herdr_bin" plugin action invoke pick --plugin herdr-quicklook
+}
+
 # Soft dependency: without herdr-pluck there is no hint overlay to chain
-# from, so this degrades to the plain clipboard flow instead of doing
-# nothing (same idiom as open-in-viewer.sh's herdr-file-viewer gate).
+# from, so this reroutes to the native pick-anywhere overlay instead of doing
+# nothing (same idiom as open-in-viewer.sh's herdr-file-viewer gate, which
+# used to degrade to the plain clipboard flow here too).
 if ! "$herdr_bin" plugin action list --plugin rmarganti.herdr-pluck >/dev/null 2>&1; then
-  notify "herdr-pluck not installed; opening the clipboard flow"
-  exec bash "$script_dir/open-preview.sh"
+  notify "herdr-pluck not installed; opening the pick-anywhere overlay"
+  reroute_to_pick
 fi
 
 before="$(clip_read_now)"
 
-"$herdr_bin" plugin action invoke pluck --plugin rmarganti.herdr-pluck >/dev/null 2>&1
+if ! "$herdr_bin" plugin action invoke pluck --plugin rmarganti.herdr-pluck >/dev/null 2>&1; then
+  notify "herdr-pluck failed to open; opening the pick-anywhere overlay"
+  reroute_to_pick
+fi
 
 # Poll for a clipboard change. Knobs are overridable for tests (fast, no real
 # sleep) and for a slower human on a loaded machine (QUICKLOOK_PLUCK_TIMEOUT).

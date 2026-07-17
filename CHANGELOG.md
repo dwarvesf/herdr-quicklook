@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- `pluck-chain`'s degrade now routes to the native pick overlay; herdr-pluck fully optional.
+
 ## 0.3.0 (2026-07-17)
 
 - `prefix+shift+y` chains herdr-pluck's hint overlay straight into the preview overlay: pick a token and it opens immediately, no separate keypress to consume the pick. Degrades to the plain clipboard flow when herdr-pluck isn't installed. Demo GIFs for every main use case (token dispatch, the three in-overlay keys, recents, the pluck chain) replace the single preview recording. (#15)
