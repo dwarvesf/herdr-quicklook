@@ -5,9 +5,11 @@
 [![license: MIT](https://img.shields.io/badge/license-MIT-green)](LICENSE)
 [![GitHub stars](https://img.shields.io/github/stars/dwarvesf/herdr-quicklook?style=flat&logo=github)](https://github.com/dwarvesf/herdr-quicklook/stargazers)
 
-**Open whatever path or URL an agent puts in front of you, without leaving [herdr](https://herdr.dev).** Copy a token (a file path, `path:123`, a bare filename, an http(s) URL), hit one key, and it opens in the right place: the preview popup, the [herdr-file-viewer](https://github.com/smarzban/herdr-file-viewer) tree, or your browser. Supported repository URLs work with Ctrl+click directly; the link overlay makes bare paths and every other detected token Ctrl+clickable too.
+**Open whatever path or URL an agent puts in front of you, without leaving [herdr](https://herdr.dev).** One key overlays a hint on every openable token on screen; one more opens it in the right place - a rendered preview popup, the [herdr-file-viewer](https://github.com/smarzban/herdr-file-viewer) tree, or your browser.
 
 Born from a daily annoyance: coding agents print file paths all day (`src/api/handler.go:142`), and reviewing one meant leaving the terminal or retyping the path. With the hint picker the whole loop is two keystrokes: `prefix+v`, then one letter.
+
+![hint flow tour: prefix+v overlays yellow hints on every openable token, a letter pick opens the glow-rendered markdown in the 90% popup, a second pick opens the csv as a qsv table with d/u half-page scroll, and an UPPERCASE pick opens a full tab pane](demo/hint-flow-tour.gif)
 
 A few things that make it more than a pager:
 
@@ -236,11 +238,7 @@ GitHub release (`gh release create`) with that changelog section as the notes
 body. Refuses to run against a dirty tree, a non-`main` branch, or an
 already-tagged version.
 
-## Demo
-
-**`prefix+v` hint-pick to popup** - the hint overlay lands a one-letter hint on every openable token; type the letter (or plain-click it) and it opens in herdr's 90% popup:
-
-![hint flow tour: prefix+v overlays yellow hints on every openable token, a letter pick opens the glow-rendered markdown in the 90% popup, a second pick opens the csv as a qsv table with d/u half-page scroll visible against its 40 rows](demo/hint-flow-tour.gif)
+## More demos
 
 **Every token kind in one pass** - a plain path, a GitHub blob URL (opens the local file), a bare commit SHA (`git show`), a `#123` PR reference (`gh pr view`), a directory (`eza --tree`):
 
