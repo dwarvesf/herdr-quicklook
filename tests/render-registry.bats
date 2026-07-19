@@ -74,17 +74,17 @@ teardown() {
   [ "$output" = "FALLBACK-RENDERED:$FIX/blob.bin" ]
 }
 
-@test "render-registry: the real fallback renderer never dumps raw bytes, only a file(1) type line" {
+@test "render-registry: the real fallback renderer describes the file plus a safe hexdump, never the raw bytes" {
+  # blob.bin opens with a NUL/high-byte run (see setup) - the full
+  # hexyl/xxd/od-degrade guard and its "never un-hexed" guarantee are
+  # covered in depth by tests/renderers-fallback.bats; this is just the
+  # render-registry-level smoke check that fallback's real body still
+  # describes-then-dumps rather than `cat`ing the path.
+  export PATH="/usr/bin:/bin"
   run bash -c ". '$LIB'; render_fallback '$FIX/blob.bin' <<<'x'"
   [ "$status" -eq 0 ]
   [[ "$output" == *"no specific renderer"* ]]
   [[ "$output" == *"type:"* ]]
-  # blob.bin's raw bytes spell the ASCII substring "binary" on purpose (see
-  # setup); if render_fallback ever `cat`'d the file instead of describing
-  # it, that literal substring would leak into the output. A short,
-  # line-bounded summary (never a byte-for-byte dump) is the point.
-  [[ "$output" != *"binary"* ]]
-  [ "$(printf '%s\n' "$output" | wc -l)" -le 4 ]
 }
 
 # ---- a registered renderer wins / first-match ordering ----

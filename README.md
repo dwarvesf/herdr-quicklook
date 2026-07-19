@@ -35,6 +35,14 @@ A few things that make it more than a pager:
 
 Resolution runs top-down: exact paths win before any fuzzy matching, and the first hit stops the chain. See [DESIGN.md](DESIGN.md) for how a token kind maps to its handler.
 
+## Renderers (v0.4)
+
+Once a token resolves to a local file, a second registry decides HOW to draw it: the closest-matching type gets a real renderer, and anything else lands on the always-on fallback below - the one guarantee that a preview never dumps a file's raw bytes into your terminal.
+
+| File type | What you get |
+|---|---|
+| unknown / binary (the catch-all fallback) | A `file(1)` one-line type description, a bounded first-~1KB hexdump ([`hexyl`](https://github.com/sharkdp/hexyl) when installed, degrading to `xxd` then the base-system `od` - never raw bytes), and an "install `<tool>`" hint when the extension maps to a known type whose renderer tool isn't on PATH yet |
+
 ## Install
 
 ```sh
