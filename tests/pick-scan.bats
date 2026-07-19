@@ -103,6 +103,27 @@ teardown() {
   [ "$output" = "$(printf 'CHANGELOG.md\tpath\t1')" ]
 }
 
+@test "fast mode: a tilde needs a slash - '~2' prose is not a path" {
+  QUICKLOOK_SCAN_FAST=1 run pick_scan_text <<<'lech khoang ~2 cot so voi pane'
+  [ -z "$output" ]
+}
+
+@test "fast mode: single-slash no-extension prose (rust/go) is dropped" {
+  QUICKLOOK_SCAN_FAST=1 run pick_scan_text <<<'viet bang rust/go cho nhanh'
+  [ -z "$output" ]
+}
+
+@test "fast mode: single-slash no-extension token that EXISTS is a path" {
+  mkdir -p "$FIX/repo/pair/leaf"
+  QUICKLOOK_SCAN_FAST=1 run pick_scan_text <<<'check the pair/leaf module'
+  [ "$output" = "$(printf 'pair/leaf	path	1')" ]
+}
+
+@test "fast mode: a tilde-slash path is a path without existing" {
+  QUICKLOOK_SCAN_FAST=1 run pick_scan_text <<<'open ~/somewhere/deep/nothing now'
+  [ "$output" = "$(printf '~/somewhere/deep/nothing	path	1')" ]
+}
+
 @test "fast mode: a github blob URL stays a url (no local-checkout probe)" {
   QUICKLOOK_SCAN_FAST=1 run pick_scan_text <<<'https://github.com/o/repo/blob/main/sub/inrepo.md'
   [ "$output" = "$(printf 'https://github.com/o/repo/blob/main/sub/inrepo.md\turl\t1')" ]

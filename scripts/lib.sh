@@ -894,8 +894,21 @@ _pick_classify_span() {
       # explicit ~/./ prefix. Prose words have none of these, so the fuzzy
       # bare-name noise never appears in fast mode either.
       if [ -n "${QUICKLOOK_SCAN_FAST:-}" ]; then
+        # Prefix-certain shapes first ('~' alone is NOT one: "~2 cot" is
+        # prose). A single-slash token with no extension (rust/go, TCP/IP)
+        # is prose more often than path, so it must EXIST to qualify - one
+        # stat, not the full resolve walk, so fast mode stays fast.
+        # shellcheck disable=SC2088  # literal ~/ match is the point
         case "$clip_path" in
-          */* | '~'*) _PICK_CLASSIFY_KIND='path' ;;
+          '~/'* | ./* | ../* | /*) _PICK_CLASSIFY_KIND='path' ;;
+          */*/*) _PICK_CLASSIFY_KIND='path' ;;
+          */*)
+            if [[ "$clip_path" =~ \.[A-Za-z][A-Za-z0-9]{0,7}$ ]]; then
+              _PICK_CLASSIFY_KIND='path'
+            elif [ -e "$clip_path" ]; then
+              _PICK_CLASSIFY_KIND='path'
+            fi
+            ;;
           *)
             [[ "$clip_path" =~ \.[A-Za-z][A-Za-z0-9]{0,7}$ ]] && _PICK_CLASSIFY_KIND='path'
             ;;
