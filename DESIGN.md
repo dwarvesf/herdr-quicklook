@@ -376,9 +376,16 @@ overlay cannot RPC, so ALL herdr calls live in the action):
    Autowrap is off and the frame is clamped to the pane height, so the
    overlay can never scroll and corrupt its own repaint; a token that
    cannot be re-located on its snapshot line stays pickable from a short
-   list under the snapshot. A keypress resolves the chosen token through
-   the real handler registry and routes by mode (`viewer` ->
-   `open-in-viewer.sh`, else `preview-pane.sh`, exec'd in this same pane).
+   list under the snapshot. A pick - a hint keypress OR a plain LEFT-CLICK
+   (the overlay owns its TTY, so it enables SGR mouse tracking and hit-tests
+   the click against each token's recorded row/col span; inserted escapes
+   are zero-width, so columns hold) - resolves the token through the real
+   handler registry and routes by mode: `viewer` -> `open-in-viewer.sh`
+   (file-viewer in its own tab), everything else -> `open-popup.sh`, which
+   spawns herdr's native 90% POPUP running `preview-pane.sh` (spawn-class
+   RPC, safe from inside the overlay - the same precedent as the escalate
+   flow; only blocking queries like `pane read` deadlock). The overlay is
+   for choosing; the popup is for reading.
 
 **The scan/rank/count flow**, entirely inside `pick_scan_text`
 (`scripts/lib.sh`), pure text-in/text-out, no live pane or clipboard of its

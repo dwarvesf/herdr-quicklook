@@ -35,6 +35,43 @@ A few things that make it more than a pager:
 
 Resolution runs top-down: exact paths win before any fuzzy matching, and the first hit stops the chain. See [DESIGN.md](DESIGN.md) for how a token kind maps to its handler.
 
+## The flow, in one picture
+
+```
+                     the pane you are reading
+                               │  prefix+v
+                               ▼
+                  ┌─────────────────────────────┐
+   scan: shape-   │  HINT OVERLAY (choose)      │  every hinted token is
+   first, back-  ─▶  pane dims, yellow one-key  │  also an OSC-8 link
+   ground, ~ms    │  hints land on each token   │
+                  └─────────────┬───────────────┘
+                type its letter │ or PLAIN-CLICK it
+                (copied text visible on screen skips
+                 the overlay and opens immediately)
+                                │ token settled
+        ┌───────────────┬───────┴────────┬─────────────────────┐
+        ▼               ▼                ▼                     ▼
+  file / sha / #ref   directory         URL            visible-but-broken path
+  ┌─────────────┐   file-viewer      browser           fzf FINDER, pre-seeded
+  │ POPUP 90%   │   in its own      (bare domains      with the clipboard
+  │ (read)      │   TAB, cursor      get https://)     (or open it any time:
+  └──────┬──────┘   on the target)                      prefix+/)
+         │  o → file-viewer at this line
+         │  e → $EDITOR at this line      d/u · j/k · / : stock less keys
+         │  D → git diff of this file
+         ▼
+  RENDER REGISTRY (how the popup draws the file, first match wins):
+  md→glow · png/webp/…→chafa · gif→bounded animate · svg→rsvg→chafa ·
+  pdf→poster+text · zip/tar→listing · csv→qsv · json→jq · ipynb/docx→pandoc ·
+  media→ffprobe+poster · sqlite→schema · plist→plutil · text→less+bat ·
+  anything else→file(1)+hexyl guard with an install hint (never raw bytes)
+
+  resolution, when a token is relative (first hit wins):
+  $PWD → this repo's worktrees → each QUICKLOOK_ROOTS →
+  every root's repos (workspace sweep) → repo filename fuzzy (fzf on ties)
+```
+
 ## Render types
 
 Once a token resolves to a local file, a second registry decides HOW to draw it: the closest-matching type gets a real renderer, and anything else lands on the always-on fallback below - the one guarantee that a preview never dumps a file's raw bytes into your terminal.
