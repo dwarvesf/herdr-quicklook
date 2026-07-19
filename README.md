@@ -41,6 +41,8 @@ Once a token resolves to a local file, a second registry decides HOW to draw it:
 
 | File type | What you get |
 |---|---|
+| still images (`png`/`jpg`/`jpeg`/`webp`/`bmp`) | Inline ANSI art via [`chafa`](https://github.com/hpjansson/chafa) (kitty-graphics passthrough when the terminal signals support); falls back to the guard below when `chafa` is absent |
+| animated gifs (`.gif`) | Inline animation via `chafa --animate` (bounded duration - never hangs the pane); a first-frame still when `--animate` is unavailable, then the guard below when `chafa` is absent |
 | unknown / binary (the catch-all fallback) | A `file(1)` one-line type description, a bounded first-~1KB hexdump ([`hexyl`](https://github.com/sharkdp/hexyl) when installed, degrading to `xxd` then the base-system `od` - never raw bytes), and an "install `<tool>`" hint when the extension maps to a known type whose renderer tool isn't on PATH yet |
 
 ## Install
