@@ -88,6 +88,26 @@ teardown() {
   [ -z "$output" ]
 }
 
+@test "fast mode: a path-shaped token needs NO existing file to classify" {
+  QUICKLOOK_SCAN_FAST=1 run pick_scan_text <<<'open missing/nowhere.go:12 next'
+  [ "$output" = "$(printf 'missing/nowhere.go:12\tpath\t1')" ]
+}
+
+@test "fast mode: prose words carry no shape and are dropped" {
+  QUICKLOOK_SCAN_FAST=1 run pick_scan_text <<<'the recap of the picker module'
+  [ -z "$output" ]
+}
+
+@test "fast mode: a dotted filename classifies by extension shape alone" {
+  QUICKLOOK_SCAN_FAST=1 run pick_scan_text <<<'see CHANGELOG.md for details'
+  [ "$output" = "$(printf 'CHANGELOG.md\tpath\t1')" ]
+}
+
+@test "fast mode: a github blob URL stays a url (no local-checkout probe)" {
+  QUICKLOOK_SCAN_FAST=1 run pick_scan_text <<<'https://github.com/o/repo/blob/main/sub/inrepo.md'
+  [ "$output" = "$(printf 'https://github.com/o/repo/blob/main/sub/inrepo.md\turl\t1')" ]
+}
+
 @test "pick_scan_text: a bare filename with an AMBIGUOUS substring hit is dropped, not a crash" {
   printf 'x\n' >"$FIX/repo/src/second-widget.md"
   git -C "$FIX/repo" add -A

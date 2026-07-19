@@ -62,6 +62,12 @@ _pick_strip_ansi <"$raw_file" >"$snap_file"
 # screen), deduped out of the on-screen rows. Written to .part, then mv'd:
 # the overlay treats the file's existence as "scan done".
 (
+  # Shape-only classification (pluck's model): milliseconds, no filesystem;
+  # resolution happens at open time. QUICKLOOK_HINT_VERIFIED=1 restores the
+  # slower verified scan (and QUICKLOOK_HINT_NAMES=1 its bare-name fuzzy).
+  if [ -z "${QUICKLOOK_HINT_VERIFIED:-}" ]; then
+    export QUICKLOOK_SCAN_FAST=1
+  fi
   [ -n "${QUICKLOOK_HINT_NAMES:-}" ] || export QUICKLOOK_SCAN_SKIP_NAMES=1
   {
     clip_raw=""

@@ -810,7 +810,12 @@ _pick_bare_name_hit_local() {
 _pick_match_kind() {
   local hkind="$1" span="$2"
   case "$hkind" in
-    dir) _pick_resolve_dir_local "$span" >/dev/null ;;
+    dir)
+      # Fast mode: the dir probe is filesystem work; decline the kind and let
+      # the catch-all path shape claim the span (dir.sh resolves it at open).
+      [ -n "${QUICKLOOK_SCAN_FAST:-}" ] && return 1
+      _pick_resolve_dir_local "$span" >/dev/null
+      ;;
     *) "match_$hkind" "$span" ;;
   esac
 }
@@ -844,6 +849,12 @@ _pick_classify_span() {
   [ "$matched" -eq 0 ] || return 0
   case "$hkind" in
     github)
+      # Fast mode (below): the local-checkout probe is filesystem work; call
+      # it a url and let the open path find the checkout when picked.
+      if [ -n "${QUICKLOOK_SCAN_FAST:-}" ]; then
+        _PICK_CLASSIFY_KIND='url'
+        return 0
+      fi
       local mapper
       case "$span" in
         https://gitlab.com/*) mapper=map_gitlab_url ;;
@@ -868,6 +879,21 @@ _pick_classify_span() {
     path)
       local clip_path="$span"
       [[ "$span" =~ ^(.+):([0-9]+)$ ]] && clip_path="${BASH_REMATCH[1]}"
+      # QUICKLOOK_SCAN_FAST=1: pluck's model - classify by SHAPE only, zero
+      # filesystem work, and defer resolution to the open step (which already
+      # resolves across worktrees/roots and reports "not found" gracefully).
+      # Pathish = has a slash, a dotted extension (letter-led), or an
+      # explicit ~/./ prefix. Prose words have none of these, so the fuzzy
+      # bare-name noise never appears in fast mode either.
+      if [ -n "${QUICKLOOK_SCAN_FAST:-}" ]; then
+        case "$clip_path" in
+          */* | '~'*) _PICK_CLASSIFY_KIND='path' ;;
+          *)
+            [[ "$clip_path" =~ \.[A-Za-z][A-Za-z0-9]{0,7}$ ]] && _PICK_CLASSIFY_KIND='path'
+            ;;
+        esac
+        return 0
+      fi
       if _pick_resolve_local "$clip_path" >/dev/null; then
         _PICK_CLASSIFY_KIND='path'
       elif [ -z "${QUICKLOOK_SCAN_SKIP_NAMES:-}" ] && _pick_bare_name_hit_local "$clip_path"; then
