@@ -300,7 +300,7 @@ while IFS= read -rsn1 key <"$tty_in"; do
       case "$key" in
         [A-Z])
           placement=tab
-          key="$(printf '%s' "$key" | tr 'A-Z' 'a-z')"
+          key="$(printf '%s' "$key" | tr '[:upper:]' '[:lower:]')"
           ;;
       esac
       idx="$(hint_index_for_key "$key" 2>/dev/null)" || continue
