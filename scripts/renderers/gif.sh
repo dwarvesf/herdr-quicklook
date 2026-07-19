@@ -34,8 +34,23 @@ _GIF_ANIMATE_DURATION="${QUICKLOOK_GIF_ANIMATE_DURATION:-8}"
 # No `o`/`d`/`e` overlay keys - same documented scope edge as image.sh.
 render_gif() {
   local path="$1"
-  if ! chafa --animate -d "$_GIF_ANIMATE_DURATION" -- "$path" 2>/dev/null; then
-    chafa --format symbols -- "$path" 2>/dev/null
+  # --animate takes an explicit =BOOL on chafa >= 1.18 (a bare --animate eats
+  # the next argv and errors), and its --duration does NOT bound an animated
+  # gif (measured: a 21s gif plays in full with --duration=2), so the bound
+  # is enforced here with a wall-clock kill. The still fallback needs
+  # --animate=off or chafa animates a multi-frame gif FOREVER even in
+  # symbols format.
+  chafa --animate=on -- "$path" 2>/dev/null &
+  local _gif_pid=$! _gif_deadline=$((SECONDS + _GIF_ANIMATE_DURATION))
+  while kill -0 "$_gif_pid" 2>/dev/null && [ "$SECONDS" -lt "$_gif_deadline" ]; do
+    sleep 0.2
+  done
+  if kill -0 "$_gif_pid" 2>/dev/null; then
+    kill "$_gif_pid" 2>/dev/null
+    printf '\033[?25h\033[0m\n'
+  fi
+  if ! wait "$_gif_pid" 2>/dev/null; then
+    chafa --animate=off --format symbols -- "$path" 2>/dev/null
   fi
   read -r -n1 -p 'press any key to close' _ 2>/dev/null || sleep 2
   return 0
