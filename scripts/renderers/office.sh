@@ -1,0 +1,15 @@
+# shellcheck shell=bash
+# office.sh: render-registry stub (v0.4 roster pre-registration, SG-01).
+# Declines every file until a later Wave-2/3 sub-goal fills in a real body;
+# see the render-registry contract comment at the top of lib.sh. Wiring a
+# real office renderer is a single-file edit to THIS file only - RENDER_KINDS,
+# render_any, the sourcing glob, and preview-pane.sh stay untouched.
+
+match_render_office() {
+  return 1
+}
+
+render_office() {
+  # unreachable: match_render_office always declines.
+  return 1
+}

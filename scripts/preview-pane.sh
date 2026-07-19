@@ -95,18 +95,11 @@ fi
 
 record_open "$raw"
 
-# Render with less driving the real FILE (not a bat pipe), so less keeps the
-# filename and its `visual` command works: `o` (or `v`) escalates to the
-# herdr-file-viewer pane via scripts/escalate.sh. bat becomes the LESSOPEN
-# preprocessor for syntax highlighting; without bat, plain less -N.
-lesskey_args=()
-[ -f "$script_dir/../lesskey" ] && lesskey_args=(--lesskey-src="$script_dir/../lesskey")
-
-export VISUAL="$script_dir/escalate.sh"
-# Read by the lesskey `e` pshell binding (escalate-editor.sh); see lesskey.
-export QUICKLOOK_EDITOR_SCRIPT="$script_dir/escalate-editor.sh"
-if command -v bat >/dev/null 2>&1; then
-  export LESSOPEN='|bat --color=always --style=numbers,header %s'
-  exec less -R "${lesskey_args[@]}" ${CLIP_LINE:++$CLIP_LINE} "$target"
-fi
-exec less -N "${lesskey_args[@]}" ${CLIP_LINE:++$CLIP_LINE} "$target"
+# Render through the render registry (scripts/renderers/, contract
+# documented in lib.sh next to the handler-registry one): render_any walks
+# RENDER_KINDS and dispatches to the first renderer whose match_render_<kind>
+# claims $target. text.sh is today's real body (the old inline
+# lesskey/bat/`exec less` tail, moved in verbatim); fallback.sh is the
+# always-0 catch-all. Most renderers `exec`, so this call does not return.
+render_any "$target" "$CLIP_LINE"
+exit $?
