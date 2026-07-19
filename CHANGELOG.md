@@ -2,6 +2,22 @@
 
 ## Unreleased
 
+- The `hint` picker replaces `pick`, `pluck-chain`, and the separate `linkify`
+  overlay: one pluck-style in-place overlay (dim pane, one-letter hints on the
+  token's first character, bright-yellow `#fffd01` badges), keyboard and
+  Ctrl+click on the same open path, opened by type (file -> preview popup,
+  directory -> file-viewer tab, URL -> browser).
+- Clipboard-first immediate open: a copied token that is visible on screen and
+  resolves opens instantly, no overlay; a stale clipboard never hijacks the key.
+- Shape-first fast scan (tilde needs a slash, a lone-slash token must exist on
+  disk), bare-name fuzzy off by default (`QUICKLOOK_HINT_NAMES=1` re-enables,
+  `QUICKLOOK_HINT_VERIFIED=1` restores the verified scan).
+- Tilde (`~/`) tokens resolve everywhere; the repo root itself is a valid
+  viewer target; `open-in-viewer` opens the file viewer in its own tab.
+- Fixed: plugin panes opened with `--cwd` flash-closed (herdr resolves the
+  pane's relative command against it); every pane now receives its cwd via env.
+  This also revived `recents` and `agent-suggestion`, broken the same way.
+
 - Supported GitHub/GitLab/Bitbucket repository URLs now route through quicklook on Ctrl+click. The new `linkify` overlay reuses the pane scanner and renders paths, URLs, SHAs, refs, directories, and names as canonical OSC-8 links; `r` refreshes and `q`/`Esc` closes.
 - Optional `pane.agent_status_changed` suggestions capture one baseline per working turn, scan only the completion delta, then notify or open the highest-confidence token. The latest suggestion can be reopened with the `agent-suggestion` action; the hook defaults to off and never polls pane output.
 - Configuration examples add native `plugin_action` bindings for the new `linkify` and `agent-suggestion` actions.

@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Link-handler action for OSC-8 sentinel URLs emitted by linkify-pane.sh.
+# Link-handler action for OSC-8 sentinel URLs emitted by the hint overlay (and formerly linkify-pane).
 set -u
 
 script_dir="$(cd "$(dirname "${BASH_SOURCE[0]:-$0}")" && pwd)"

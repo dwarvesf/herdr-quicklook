@@ -3,8 +3,7 @@
 setup() {
   ROOT="$BATS_TEST_DIRNAME/.."
   LIB="$ROOT/scripts/lib.sh"
-  LINKIFY="$ROOT/scripts/linkify.sh"
-  LINKIFY_PANE="$ROOT/scripts/linkify-pane.sh"
+  HINT_PANE="$ROOT/scripts/hint-pane.sh"
   OPEN_LINK="$ROOT/scripts/open-link.sh"
   # shellcheck disable=SC1090
   . "$LIB"
@@ -51,50 +50,42 @@ teardown() {
   [ "$status" -ne 0 ]
 }
 
-@test "linkify action forwards the origin pane and cwd into an overlay" {
-  export HERDR_PLUGIN_CONTEXT_JSON
-  HERDR_PLUGIN_CONTEXT_JSON="$(jq -cn --arg cwd "$FIX/repo" '{focused_pane_id:"w1-1",focused_pane_cwd:$cwd}')"
-  run bash "$LINKIFY"
-  [ "$status" -eq 0 ]
-  grep -qx 'linkify-pane' <<<"$output"
-  grep -qx 'overlay' <<<"$output"
-  grep -qx 'QUICKLOOK_LINKIFY_ORIGIN_PANE=w1-1' <<<"$output"
-  grep -qx "$FIX/repo" <<<"$output"
-}
-
-@test "linkify pane renders scanner candidates as OSC-8 sentinel links" {
-  cat >"$STUB/herdr" <<'SH'
-#!/usr/bin/env bash
-if [ "$1" = "pane" ] && [ "$2" = "read" ]; then
-  printf 'changed src/x.go:7\n'
-  printf 'see https://example.com/docs\n'
-fi
-SH
-  chmod +x "$STUB/herdr"
+@test "hint pane overlays hint letters in place on the snapshot" {
   cd "$FIX/repo"
-  export QUICKLOOK_LINKIFY_ORIGIN_PANE="w1-1"
-  run bash "$LINKIFY_PANE" </dev/null
-  [ "$status" -eq 0 ]
+  snap_file="$FIX/snap"
+  printf 'changed src/x.go:7 today\n' >"$snap_file"
+  printf 'see https://example.com/docs\n' >>"$snap_file"
   path_uri="$(quicklook_link_uri 'src/x.go:7')"
   url_uri="$(quicklook_link_uri 'https://example.com/docs')"
+  tokens_file="$FIX/tokens"
+  printf 'src/x.go:7\t1\t%s\tpath  src/x.go:7\n' "$path_uri" >"$tokens_file"
+  printf 'https://example.com/docs\t2\t%s\turl   https://example.com/docs\n' "$url_uri" >>"$tokens_file"
+  export QUICKLOOK_HINT_TOKENS_FILE="$tokens_file"
+  export QUICKLOOK_HINT_SNAP_FILE="$snap_file"
+  run bash "$HINT_PANE" </dev/null
+  [ "$status" -eq 0 ]
   [[ "$output" == *"$path_uri"* ]]
   [[ "$output" == *"$url_uri"* ]]
-  [[ "$output" == *"Ctrl+click to open"* ]]
+  # In-place overlay: the hint letter replaces the token's first char inside
+  # the snapshot line (black on bright yellow); the surrounding text stays.
+  [[ "$output" == *"changed "* ]]
+  [[ "$output" == *$'\033[0;1;30;48;2;255;253;1ma\033[0m\033[0;38;2;255;253;1mrc/x.go:7\033[0m'* ]]
+  [[ "$output" == *$'\033[0;1;30;48;2;255;253;1ms\033[0m\033[0;38;2;255;253;1mttps://example.com/docs\033[0m'* ]]
+  # header removed for pluck-parity smoothness; OSC-8 links assert clickability
 }
 
-@test "linkify pane refreshes the origin snapshot and q closes" {
-  cat >"$STUB/herdr" <<'SH'
-#!/usr/bin/env bash
-if [ "$1" = "pane" ] && [ "$2" = "read" ]; then
-  printf 'changed src/x.go:7\n'
-fi
-SH
-  chmod +x "$STUB/herdr"
+@test "hint pane parks an unmatchable token in the extras list" {
   cd "$FIX/repo"
-  export QUICKLOOK_LINKIFY_ORIGIN_PANE="w1-1"
-  run bash "$LINKIFY_PANE" <<<"rq"
+  snap_file="$FIX/snap"
+  printf 'nothing relevant here\n' >"$snap_file"
+  tokens_file="$FIX/tokens"
+  printf 'src/x.go:7\t1\t\tpath  src/x.go:7\n' >"$tokens_file"
+  export QUICKLOOK_HINT_TOKENS_FILE="$tokens_file"
+  export QUICKLOOK_HINT_SNAP_FILE="$snap_file"
+  run bash "$HINT_PANE" </dev/null
   [ "$status" -eq 0 ]
-  [ "$(grep -c '1 on screen' <<<"$output")" -eq 2 ]
+  [[ "$output" == *"nothing relevant here"* ]]
+  [[ "$output" == *"path  src/x.go:7"* ]]
 }
 
 @test "virtual link action decodes the token before opening preview" {
@@ -108,7 +99,7 @@ SH
   ! grep -q 'herdr-quicklook.invalid' <<<"$output"
 }
 
-@test "manifest registers linkify actions, overlay, ordered handlers, and agent hook" {
+@test "manifest registers the hint overlay, ordered handlers, and agent hook" {
   python3 - "$ROOT/herdr-plugin.toml" <<'PY'
 import re
 import sys
@@ -120,10 +111,15 @@ with open(sys.argv[1], "rb") as f:
     data = tomllib.load(f)
 actions = {item["id"]: item for item in data["actions"]}
 panes = {item["id"]: item for item in data["panes"]}
-assert actions["linkify"]["command"] == ["bash", "scripts/linkify.sh"]
+assert actions["hint"]["command"] == ["bash", "scripts/hint.sh"]
 assert actions["open-link"]["command"] == ["bash", "scripts/open-link.sh"]
 assert actions["agent-suggestion"]["command"] == ["bash", "scripts/open-suggestion.sh"]
-assert panes["linkify-pane"]["placement"] == "overlay"
+assert panes["hint-pane"]["placement"] == "overlay"
+# The superseded pickers must stay gone.
+for dead in ("pick", "linkify", "pluck-chain"):
+    assert dead not in actions, dead
+for dead_pane in ("pick-pane", "linkify-pane"):
+    assert dead_pane not in panes, dead_pane
 handlers = data["link_handlers"]
 assert [item["id"] for item in handlers] == ["virtual-token", "git-host-token"]
 assert handlers[0]["action"] == "open-link"

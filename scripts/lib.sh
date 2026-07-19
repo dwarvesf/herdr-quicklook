@@ -196,6 +196,32 @@ load_config() {
   [ -n "$dir" ] && [ -f "$dir/.env" ] && . "$dir/.env"
 }
 
+# Single-char hint keys for the native `hint` overlay, home-row first so the
+# most-relevant tokens (rendered top-down) get the easiest keys. `q` is
+# excluded: it is the cancel key, so a token labeled q could never be picked.
+# 25 keys is the ceiling; a busier pane shows only the first 25 (ranked).
+# ponytail: 25-cap, add two-char hints only if a real pane ever overflows.
+QUICKLOOK_HINT_KEYS="asdfghjklwertyuiopzxcvbnm"
+
+# hint_key_for_index <0-based-index> -> the hint char, rc 1 if out of range.
+hint_key_for_index() {
+  local i="$1"
+  case "$i" in *[!0-9]*|'') return 1 ;; esac
+  [ "$i" -lt "${#QUICKLOOK_HINT_KEYS}" ] || return 1
+  printf '%s' "${QUICKLOOK_HINT_KEYS:$i:1}"
+}
+
+# hint_index_for_key <char> -> the 0-based index, rc 1 if not a hint key.
+hint_index_for_key() {
+  local k="$1" i=0
+  [ -n "$k" ] || return 1
+  while [ "$i" -lt "${#QUICKLOOK_HINT_KEYS}" ]; do
+    [ "${QUICKLOOK_HINT_KEYS:$i:1}" = "$k" ] && { printf '%s' "$i"; return 0; }
+    i=$((i + 1))
+  done
+  return 1
+}
+
 # pick_token [arg] -> the token to open, priority: $QUICKLOOK_TOKEN env (the
 # only channel that crosses `herdr plugin pane open --env`) > first argument
 # (natural CLI/agent shape) > clipboard (interactive default). Empty env = unset.
@@ -416,6 +442,14 @@ render_command_in_pager() {
 # a target (caller does its own fallback, if any).
 resolve_any_token() {
   local raw="$1" kind
+  # A copied shell path routinely arrives tilde-form; no handler expands it,
+  # so expand once here (never inside quotes on screen, always the user's own
+  # home - a remote host's ~ is out of scope by design).
+  # shellcheck disable=SC2088  # literal ~/ match is the point: WE expand it
+  case "$raw" in
+    '~/'*) raw="$HOME/${raw#'~/'}" ;;
+    '~') raw="$HOME" ;;
+  esac
   RESOLVED_TARGET=""
   RESOLVED_LINE=""
   RESOLVED_MODE=""
@@ -513,7 +547,7 @@ resolve_any_token() {
 #     fixed output variable costs nothing.
 #   - The final tier/sort ranking is an awk + `sort` + awk pipeline instead
 #     of a bash `local -A` map and a bash `printf`-per-token sort-key loop.
-#   Net effect: no bash-version guard needed any more - pick-pane.sh no
+#   Net effect: no bash-version guard needed any more - hint-era panes no
 #   longer checks $BASH_VERSINFO before calling pick_acquire. See
 #   DECISIONS.md (ops-toolkit) for the measured before/after on both a
 #   modern bash and macOS's real bash 3.2.
@@ -569,22 +603,24 @@ resolve_any_token() {
 # else is the pure core, fixture-text/fixture-file testable, no live pane.
 #
 # ---- The action/pane wiring contract (pinned for SG-02 / SG-03) ----
-# Action id `pick` -> scripts/pick.sh (no TTY, mirrors scripts/recents.sh):
+# Action id `hint` -> scripts/hint.sh (no TTY, mirrors scripts/recents.sh):
 #   1. captures the origin pane id BEFORE opening the overlay
 #      (`herdr pane current | jq -r '.result.pane.pane_id'` - once the
-#      pick-pane overlay is focused, `pane current` returns the OVERLAY,
+#      hint-pane overlay is focused, `pane current` returns the OVERLAY,
 #      not the origin the user was in);
-#   2. reads the clipboard token (pick_token / clip_read);
-#   3. opens the `pick-pane` overlay, forwarding
-#      `--env QUICKLOOK_PICK_ORIGIN_PANE=<id>` (+ `--cwd <origin cwd>` +
-#      `--env QUICKLOOK_PICK_CLIP=<clip>` when a clipboard value exists).
-# Pane id `pick-pane` -> scripts/pick-pane.sh (real TTY, mirrors
-# scripts/recents-pane.sh):
-#   4. `pick_acquire "$QUICKLOOK_PICK_ORIGIN_PANE"` -> the candidate list;
-#   5. builds the clipboard-first fzf list (row 1 = the clipboard token
-#      IF it resolves, deduped out of the on-screen rows below it) +
-#      `pick_count_header`'s output as the fzf `--header`;
-#   6. Enter -> `export QUICKLOOK_TOKEN=<raw>; exec bash preview-pane.sh`
+#   2. reads the clipboard token (clip_read) and runs the WHOLE
+#      `pick_acquire` scan HERE (an RPC from inside a server-spawned
+#      overlay pane deadlocks - see the hint.sh header), writing the
+#      clipboard-first "raw<TAB>label" list to a temp file;
+#   3. opens the `hint-pane` overlay, forwarding
+#      `--env QUICKLOOK_HINT_TOKENS_FILE=<file>` +
+#      `--env QUICKLOOK_HINT_CWD=<origin cwd>` (env, never --cwd: --cwd
+#      breaks the pane's relative command resolution).
+# Pane id `hint-pane` -> scripts/hint-pane.sh (real TTY, no RPC at all):
+#   4. reads the prepared token list, renders one hint key per row, each
+#      row also an OSC-8 sentinel link (Ctrl+click -> open-link handler);
+#   5. a hint keypress -> `export QUICKLOOK_TOKEN=<raw>; exec bash
+#      preview-pane.sh` in this same pane.
 #      (the SAME open path recents-pane.sh already reuses - resolve +
 #      render + record_open, zero new open code);
 #   7. Esc -> close, nothing opened; zero candidates and no resolvable
@@ -782,7 +818,12 @@ _pick_bare_name_hit_local() {
 _pick_match_kind() {
   local hkind="$1" span="$2"
   case "$hkind" in
-    dir) _pick_resolve_dir_local "$span" >/dev/null ;;
+    dir)
+      # Fast mode: the dir probe is filesystem work; decline the kind and let
+      # the catch-all path shape claim the span (dir.sh resolves it at open).
+      [ -n "${QUICKLOOK_SCAN_FAST:-}" ] && return 1
+      _pick_resolve_dir_local "$span" >/dev/null
+      ;;
     *) "match_$hkind" "$span" ;;
   esac
 }
@@ -816,6 +857,12 @@ _pick_classify_span() {
   [ "$matched" -eq 0 ] || return 0
   case "$hkind" in
     github)
+      # Fast mode (below): the local-checkout probe is filesystem work; call
+      # it a url and let the open path find the checkout when picked.
+      if [ -n "${QUICKLOOK_SCAN_FAST:-}" ]; then
+        _PICK_CLASSIFY_KIND='url'
+        return 0
+      fi
       local mapper
       case "$span" in
         https://gitlab.com/*) mapper=map_gitlab_url ;;
@@ -840,9 +887,40 @@ _pick_classify_span() {
     path)
       local clip_path="$span"
       [[ "$span" =~ ^(.+):([0-9]+)$ ]] && clip_path="${BASH_REMATCH[1]}"
+      # QUICKLOOK_SCAN_FAST=1: pluck's model - classify by SHAPE only, zero
+      # filesystem work, and defer resolution to the open step (which already
+      # resolves across worktrees/roots and reports "not found" gracefully).
+      # Pathish = has a slash, a dotted extension (letter-led), or an
+      # explicit ~/./ prefix. Prose words have none of these, so the fuzzy
+      # bare-name noise never appears in fast mode either.
+      if [ -n "${QUICKLOOK_SCAN_FAST:-}" ]; then
+        # Prefix-certain shapes first ('~' alone is NOT one: "~2 cot" is
+        # prose). A single-slash token with no extension (rust/go, TCP/IP)
+        # is prose more often than path, so it must EXIST to qualify - one
+        # stat, not the full resolve walk, so fast mode stays fast.
+        # shellcheck disable=SC2088  # literal ~/ match is the point
+        case "$clip_path" in
+          '~/'* | ./* | ../* | /*) _PICK_CLASSIFY_KIND='path' ;;
+          */*/*) _PICK_CLASSIFY_KIND='path' ;;
+          */*)
+            if [[ "$clip_path" =~ \.[A-Za-z][A-Za-z0-9]{0,7}$ ]]; then
+              _PICK_CLASSIFY_KIND='path'
+            elif [ -e "$clip_path" ]; then
+              _PICK_CLASSIFY_KIND='path'
+            fi
+            ;;
+          *)
+            [[ "$clip_path" =~ \.[A-Za-z][A-Za-z0-9]{0,7}$ ]] && _PICK_CLASSIFY_KIND='path'
+            ;;
+        esac
+        return 0
+      fi
       if _pick_resolve_local "$clip_path" >/dev/null; then
         _PICK_CLASSIFY_KIND='path'
-      elif _pick_bare_name_hit_local "$clip_path"; then
+      elif [ -z "${QUICKLOOK_SCAN_SKIP_NAMES:-}" ] && _pick_bare_name_hit_local "$clip_path"; then
+        # QUICKLOOK_SCAN_SKIP_NAMES=1 drops the bare-name fuzzy entirely: it
+        # is both the noisiest kind (any prose word matching one tracked
+        # file) and the most expensive (a list walk per unresolved span).
         _PICK_CLASSIFY_KIND='name'
       fi
       ;;

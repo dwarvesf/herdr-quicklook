@@ -40,7 +40,11 @@ HERDR
   chmod +x "$STUB/less"
   cat > "$STUB/jq" <<'JQ'
 #!/usr/bin/env bash
-printf '{}'
+case "$*" in
+  *".result.pane.pane_id"*) printf 'STUBPANE\n' ;;
+  *".label"*) printf 'Files\n' ;;
+  *) printf '{}' ;;
+esac
 JQ
   chmod +x "$STUB/jq"
 
@@ -178,9 +182,9 @@ teardown() {
   export QUICKLOOK_TOKEN="adir"
   run bash "$VIEWER"
   [ "$status" -eq 0 ]
-  grep -qF "pane send-keys {} f" "$HLOG"
-  grep -qF "pane send-text {} adir" "$HLOG"
-  grep -qF "pane send-keys {} Enter" "$HLOG"
+  grep -qF "pane send-keys STUBPANE f" "$HLOG"
+  grep -qF "pane send-text STUBPANE adir" "$HLOG"
+  grep -qF "pane send-keys STUBPANE Enter" "$HLOG"
 }
 
 @test "negative control: a directory outside the repo notifies and never sends keys" {

@@ -6,12 +6,12 @@ file, a browser tab, or a paged command. User-facing behavior lives in
 
 ## Token flow
 
-Every token-opening path (`preview`, `open-in-viewer`, `recents`, `pick`,
-`linkify`, direct URL clicks, and agent suggestions) eventually reaches
+Every token-opening path (`preview`, `open-in-viewer`, `recents`, the `hint`
+picker, direct URL clicks, and agent suggestions) eventually reaches
 `resolve_any_token` in `scripts/lib.sh`. Clipboard-oriented actions call
-`pick_token` first; pane-oriented actions reuse `pick_scan_text` to extract
+`pick_token` first; the hint picker reuses `pick_scan_text` to extract
 ranked candidates before handing one raw token to the same resolver. See
-[Pick anywhere](#pick-anywhere) for the scan-time path.
+[Hint picker](#hint-picker) for the scan-time path.
 
 ```
 $QUICKLOOK_TOKEN env / script arg / clipboard
@@ -133,10 +133,11 @@ may need a look, those bodies are the single place all four modes render.
 ## Virtual link transport
 
 Herdr plugin link handlers receive only resolved http(s) URLs. A plain path
-in another terminal pane never reaches a plugin, so `linkify` does not try to
-modify that pane. Instead, `scripts/linkify.sh` captures the origin pane id and
-cwd before opening `linkify-pane`, and the pane runs the existing
-`pick_scan_text` scanner against the origin's visible text.
+in another terminal pane never reaches a plugin, so the hint overlay does not
+try to modify that pane. Instead, the `hint` action scans the origin's
+visible text and precomputes an OSC-8 URI per token; `hint-pane` renders
+each hinted token wrapped in that URI, so Ctrl+click and the hint letter
+share one open path.
 
 Each candidate is rendered with an OSC-8 URI of this shape:
 
@@ -157,11 +158,10 @@ The narrower `git-host-token` handler routes only URL shapes quicklook improves
 (blob/raw files and pull requests) to the existing `preview` action. Handler
 order is significant: the internal sentinel handler stays first.
 
-`linkify-pane` must remain an `overlay`, not a popup. Herdr overlays are normal
+`hint-pane` must remain an `overlay`, not a popup. Herdr overlays are normal
 terminal panes whose OSC-8 cells participate in Ctrl-click resolution; popup
 mouse input is forwarded directly to the popup process before link handling.
-The origin pane id is explicit, so `r` can refresh it even though focus belongs
-to the overlay. The shared scanner remains compatible with macOS system Bash 3.2.
+The shared scanner remains compatible with macOS system Bash 3.2.
 
 ## The lesskey three-slot map
 
@@ -222,34 +222,34 @@ preview ───────────plugin pane open─────▶ prev
 recents ───────────plugin pane open─────▶ recents-pick pane
                                              └─ exec, same pane/TTY ───────────┘
 
-pick ──────────────plugin pane open─────▶ pick-pane
-                                             └─ exec, same pane/TTY ───────────┘
-
-linkify ───────────plugin pane open─────▶ linkify-pane
-                                             └─ OSC-8 Ctrl+click ─▶ open-link ─┘
+hint ──────────────plugin pane open─────▶ hint-pane (in-place hint overlay)
+     └ scan in a background subshell          ├─ keypress: exec, same pane/TTY ┘
+       (pane read is RPC-safe HERE)           └─ OSC-8 Ctrl+click ─▶ open-link ┘
 repository URL Ctrl+click ────────────────────────────────▶ preview
 agent status hook ─▶ latest suggestion state ─▶ agent-suggestion ─▶ preview
 
 open-in-viewer ·····herdr socket: send-keys / send-text·····▶ herdr-file-viewer pane (a different plugin)
-
-pluck-chain ········herdr socket: plugin action invoke pluck + clipboard poll·····▶ herdr-pluck's own hint-overlay tab (a different plugin)
-            ········absent, or invoke fails: plugin action invoke pick···········▶ pick (loops back into the action above)
 ```
 
-`open-in-viewer`, `recents`, `pick`, and `linkify` cannot do interactive work
-inside their action command. They either open a plugin pane or drive an
-existing pane through the herdr socket. `recents-pane.sh` and `pick-pane.sh`
-`exec` `preview-pane.sh` after selection so resolution, rendering, and recents
-recording stay on one path. `linkify-pane.sh` remains alive underneath nested
-previews, allowing several Ctrl-clicked tokens to be inspected before closing
-the link snapshot. `pluck-chain` drives herdr-pluck over the socket and falls
-back to `pick` without owning a pane.
+`open-in-viewer`, `recents`, and `hint` cannot do interactive work inside
+their action command. They either open a plugin pane or drive an existing
+pane through the herdr socket. `recents-pane.sh` and `hint-pane.sh` `exec`
+`preview-pane.sh` after selection so resolution, rendering, and recents
+recording stay on one path (a directory pick routes into `open-in-viewer.sh`
+instead, so it lands in the real file viewer). Two herdr constraints pin
+this topology: **never open a plugin pane with `--cwd`** (herdr resolves the
+pane's relative manifest command against that cwd, finds nothing, and the
+pane flash-closes; every pane receives its cwd as an env var instead), and
+**never issue a server RPC from inside a server-spawned overlay pane** (it
+deadlocks; the overlay therefore reads two files the action prepared and a
+keypress, nothing else).
 
-## Pick anywhere
+## Hint picker
 
-`pick` (`scripts/pick.sh` + `scripts/pick-pane.sh`) is the one action that
+`hint` (`scripts/hint.sh` + `scripts/hint-pane.sh`) is the one action that
 doesn't start from a single clipboard token - it scans everything currently
-rendered on screen and lets you choose.
+rendered on screen and overlays a one-letter hint on each openable token,
+in place, pluck-style.
 
 **The acquisition primitive**: `herdr pane read <pane_id> --source visible
 --format text` (herdr's own socket API) is the only live dependency in the
@@ -262,24 +262,32 @@ also strips them itself in a defensive pass, so any OTHER caller that
 pipes raw/decorated text in stays safe too. See DECISIONS.md for the full
 verification method.
 
-**The action/pane split** (same shape as `recents`/`recents-pick`, needed
-for the same reason: `herdr` runs an action's own command with no TTY, so
-the interactive `fzf` step has to live in a real overlay pane instead):
+**The action/pane split** (`herdr` runs an action's own command with no
+TTY, so the interactive keypress lives in a real overlay pane; and the
+overlay cannot RPC, so ALL herdr calls live in the action):
 
-1. `pick` (action, no TTY) captures the ORIGIN pane id before it does
+1. `hint` (action, no TTY) captures the ORIGIN pane id before it does
    anything else - `herdr pane current` returns the FOCUSED pane, and the
-   instant the `pick-pane` overlay is focused, that call would return the
-   overlay itself, not the pane the user was looking at. Falls back to
-   `$HERDR_PLUGIN_CONTEXT_JSON`'s `.focused_pane_id` field when `pane
-   current` is unavailable - **live-verified** (2026-07-17, against a real
-   `plugin action invoke` context payload) as the correct field name,
-   alongside `.focused_pane_cwd` which the cwd fallback already used. See
-   DECISIONS.md for the full payload.
-2. It also reads the clipboard token, then opens `pick-pane`, forwarding
-   the origin pane id, its cwd, and the clipboard token via `--env`/`--cwd`.
-3. `pick-pane` (pane, real TTY) calls
-   `pick_acquire "$QUICKLOOK_PICK_ORIGIN_PANE"`, the acquisition primitive
-   above piped straight into `pick_scan_text`.
+   instant the overlay is focused, that call would return the overlay
+   itself. Falls back to `$HERDR_PLUGIN_CONTEXT_JSON`'s `.focused_pane_id`
+   (live-verified 2026-07-17; see DECISIONS.md).
+2. It reads the pane's visible text ONCE (`pane read`), strips it, and
+   writes the snapshot to a temp file. If the clipboard token is visible in
+   that snapshot AND resolves, it opens IMMEDIATELY (directory ->
+   `open-in-viewer`, everything else -> `preview`), no overlay at all - and
+   a stale clipboard can never hijack the key, because the text must be on
+   screen. Otherwise it opens `hint-pane` right away and leaves the scan
+   running in a BACKGROUND subshell that writes the ranked token list
+   (raw, line-no, precomputed OSC-8 URI, label) atomically.
+3. `hint-pane` (pane, real TTY, zero RPC) paints the dimmed snapshot
+   instantly, polls for the token file (Esc aborts mid-scan), then repaints
+   in place with the hint letter overlaid on each token's first character.
+   Autowrap is off and the frame is clamped to the pane height, so the
+   overlay can never scroll and corrupt its own repaint; a token that
+   cannot be re-located on its snapshot line stays pickable from a short
+   list under the snapshot. A keypress resolves the chosen token through
+   the real handler registry and routes by mode (`viewer` ->
+   `open-in-viewer.sh`, else `preview-pane.sh`, exec'd in this same pane).
 
 **The scan/rank/count flow**, entirely inside `pick_scan_text`
 (`scripts/lib.sh`), pure text-in/text-out, no live pane or clipboard of its
@@ -324,9 +332,18 @@ one token, but wrong for classifying every span on a busy screen - see the
 CRITICAL performance fix in DECISIONS.md (an unmirrored first pass measured
 143s on a 500-line screen; the mirrored, hoisted rewrite brought that to
 ~1s). `pick_scan_text` never calls the OPEN-time handlers at all;
-`pick-pane.sh`'s `Enter` still hands the chosen raw token to
-`preview-pane.sh`, which resolves it through the real handler registry
-exactly like every other open.
+`hint-pane.sh`'s keypress still hands the chosen raw token to the real
+handler registry exactly like every other open.
+
+**Fast mode** (`QUICKLOOK_SCAN_FAST=1`, the hint action's default): the
+classification step goes shape-first - slash/tilde/dotted-extension shapes
+classify with zero filesystem work, a single-slash extensionless token
+(`pair/leaf` vs prose `rust/go`) must pass one `-e` stat, the bare-name
+fuzzy is skipped entirely, and a github URL stays `url` (the open step
+finds the checkout). Resolution correctness is unaffected: the open step
+always re-resolves through the full registry. `QUICKLOOK_HINT_VERIFIED=1`
+restores the fully-verified scan; `QUICKLOOK_HINT_NAMES=1` re-enables the
+bare-name fuzzy.
 
 **Runs on any bash, including macOS's system `/bin/bash` (3.2).** The
 tokenize/trim/dedup pass and the final tier-rank/sort are a single awk
@@ -370,7 +387,7 @@ The manifest subscribes only to `pane.agent_status_changed`; herdr deliberately
 does not expose high-volume output changes as plugin hooks. The command exits
 before reading a pane unless `QUICKLOOK_AGENT_SUGGESTIONS` is `notify` or
 `preview`, so the default installation has no background scanner. Enabled hooks
-reuse the same Bash 3.2-compatible pane scanner as `pick` and `linkify`.
+reuse the same Bash 3.2-compatible pane scanner as the hint picker.
 
 For an enabled pane, `working` creates one baseline under
 `$HERDR_PLUGIN_STATE_DIR/agent-suggestions`. Further `working` presentation

@@ -30,10 +30,13 @@ fi
 raw="$(pick_token "${1:-}")"
 [ -z "$raw" ] && { notify "nothing to open (no token, clipboard empty)"; exit 0; }
 
-# Base everything on the focused pane, not this script's own cwd
+# Base everything on the focused pane, not this script's own cwd.
+# QUICKLOOK_KEEP_CWD=1 skips that cd: the hint overlay execs this script
+# already standing in the ORIGIN repo, while `pane current` would report the
+# overlay's own pane cwd (the wrong repo for the containment check below).
 focused="$("$herdr_bin" pane current 2>/dev/null)"
 fcwd="$(printf '%s' "$focused" | jq -r '.result.pane.cwd // empty' 2>/dev/null)"
-if [ -n "$fcwd" ]; then cd "$fcwd" 2>/dev/null || true; fi
+if [ -z "${QUICKLOOK_KEEP_CWD:-}" ] && [ -n "$fcwd" ]; then cd "$fcwd" 2>/dev/null || true; fi
 
 target=""
 CLIP_LINE=""
@@ -87,13 +90,16 @@ if resolve_any_token "$raw"; then
 fi
 [ -z "${target:-}" ] && { notify "not found: $raw"; exit 0; }
 
-# The viewer roots at the focused pane's repo; outside targets can't show there.
+# The viewer roots at the focused pane's repo; outside targets can't show
+# there. The root itself is inside its own tree (rel stays empty: the viewer
+# opens rooted there, no goto needed).
 root="$(git rev-parse --show-toplevel 2>/dev/null)"
-if [ -z "$root" ] || [[ "$target" != "$root"/* ]]; then
+if [ -z "$root" ] || { [ "$target" != "$root" ] && [[ "$target" != "$root"/* ]]; }; then
   notify "outside this repo's tree: use the preview overlay instead"
   exit 0
 fi
 rel="${target#"$root"/}"
+[ "$rel" = "$target" ] && rel=""
 
 # $rel is typed into the file-viewer TUI via send-text; a control byte in the
 # filename (e.g. an embedded newline in a maliciously-named file) would inject
@@ -102,34 +108,33 @@ case "$rel" in
   *[$'\n\r\t']*) notify "unsafe filename (control chars); refusing"; exit 0 ;;
 esac
 
-tab="$(printf '%s' "$focused" | jq -r '.result.pane.tab_id // empty' 2>/dev/null)"
-files_pane() {
-  "$herdr_bin" pane list 2>/dev/null \
-    | jq -r --arg tab "$tab" \
-        '.result.panes[] | select(.label == "Files" and .tab_id == $tab) | .pane_id' \
-    | head -1
-}
+# The viewer opens in its OWN TAB (open-file-viewer-tab switches to an
+# existing viewer tab instead of opening twice): a vertical split would
+# disrupt the origin tab's layout. After the action, focus lands on the
+# viewer pane; poll `pane current` until its label reads "Files".
+"$herdr_bin" plugin action invoke open-file-viewer-tab --plugin herdr-file-viewer >/dev/null 2>&1 \
+  || { notify "herdr-file-viewer is not installed"; exit 1; }
+pid=""
+for _ in $(seq 1 20); do
+  pid="$("$herdr_bin" pane current 2>/dev/null | jq -r '.result.pane.pane_id // empty' 2>/dev/null)"
+  if [ -n "$pid" ]; then
+    label="$("$herdr_bin" pane list 2>/dev/null \
+      | jq -r --arg id "$pid" '.result.panes[] | select(.pane_id == $id) | .label // empty' 2>/dev/null)"
+    [ "$label" = "Files" ] && break
+  fi
+  pid=""
+  sleep 0.15
+done
+[ -z "$pid" ] && { notify "file viewer did not open"; exit 1; }
+sleep 0.5 # let the TUI finish its first tree walk before it eats keys
 
-pid="$(files_pane)"
-if [ -z "$pid" ]; then
-  "$herdr_bin" plugin action invoke open-file-viewer --plugin herdr-file-viewer >/dev/null 2>&1 \
-    || { notify "herdr-file-viewer is not installed"; exit 1; }
-  for _ in $(seq 1 20); do
-    pid="$(files_pane)"
-    [ -n "$pid" ] && break
-    sleep 0.15
-  done
-  [ -z "$pid" ] && { notify "file viewer did not open"; exit 1; }
-  sleep 0.5 # let the TUI finish its first tree walk before it eats keys
-else
-  # focus without toggling: zoom on/off, the viewer launcher's own trick
-  "$herdr_bin" pane zoom "$pid" --on >/dev/null 2>&1
-  "$herdr_bin" pane zoom "$pid" --off >/dev/null 2>&1
+# rel empty = the target IS the repo root; the viewer already opened rooted
+# there, so there is nothing to goto.
+if [ -n "$rel" ]; then
+  "$herdr_bin" pane send-keys "$pid" f >/dev/null 2>&1
+  "$herdr_bin" pane send-text "$pid" "$rel" >/dev/null 2>&1
+  "$herdr_bin" pane send-keys "$pid" Enter >/dev/null 2>&1
 fi
-
-"$herdr_bin" pane send-keys "$pid" f >/dev/null 2>&1
-"$herdr_bin" pane send-text "$pid" "$rel" >/dev/null 2>&1
-"$herdr_bin" pane send-keys "$pid" Enter >/dev/null 2>&1
 
 if [ -n "$CLIP_LINE" ]; then
   sleep 0.2

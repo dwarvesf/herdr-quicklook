@@ -28,7 +28,8 @@ set -- plugin pane open \
   --focus
 
 if [ -n "$repo" ] && [ -d "$repo" ]; then
-  set -- "$@" --cwd "$repo"
+  # env, never --cwd: --cwd flash-closes the pane (relative command resolution).
+  set -- "$@" --env "QUICKLOOK_PREVIEW_CWD=$repo"
 fi
 
 exec "$herdr_bin" "$@"

@@ -27,8 +27,10 @@ set -- plugin pane open \
   --placement overlay \
   --focus \
   --env "QUICKLOOK_TOKEN=$token"
+# env, never --cwd: --cwd breaks the pane's relative command resolution and
+# the pane flash-closes (herdr resolves `bash scripts/...` against it).
 if [ -n "$cwd" ] && [ -d "$cwd" ]; then
-  set -- "$@" --cwd "$cwd"
+  set -- "$@" --env "QUICKLOOK_PREVIEW_CWD=$cwd"
 fi
 
 exec "$herdr_bin" "$@"

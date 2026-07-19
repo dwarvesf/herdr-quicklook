@@ -17,6 +17,12 @@ pause_close() {
 
 load_config
 
+# Enter the origin repo (forwarded as env, never --cwd: --cwd flash-closes
+# the pane) so relative tokens resolve against the repo the user was in.
+if [ -n "${QUICKLOOK_PREVIEW_CWD:-}" ] && [ -d "$QUICKLOOK_PREVIEW_CWD" ]; then
+  cd "$QUICKLOOK_PREVIEW_CWD" || true
+fi
+
 # Token priority: $QUICKLOOK_TOKEN env (agents set this via `plugin pane open
 # --env`) > $1 > clipboard. Lets an agent push a file onto the screen.
 raw="$(pick_token "${1:-}")"

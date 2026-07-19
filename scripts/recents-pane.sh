@@ -20,6 +20,12 @@ script_dir="$(cd "$(dirname "${BASH_SOURCE[0]:-$0}")" && pwd)"
 
 load_config
 
+# Enter the origin repo (forwarded as env, never --cwd: --cwd flash-closes
+# the pane) so a relative recents entry resolves against the right repo.
+if [ -n "${QUICKLOOK_PREVIEW_CWD:-}" ] && [ -d "$QUICKLOOK_PREVIEW_CWD" ]; then
+  cd "$QUICKLOOK_PREVIEW_CWD" || true
+fi
+
 pause_close() {
   printf '%s\n' "$*"
   read -r -n1 -p "press any key to close" _ 2>/dev/null || sleep 2
