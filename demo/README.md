@@ -5,7 +5,7 @@ covering the token-opening flows and, since v0.4, the render registry itself:
 
 | GIF | Shows |
 |---|---|
-| `hint-flow-tour.gif` | The hero take: `prefix+v` overlays a one-letter hint on every openable token; a letter pick opens `sample.md` (glow) in herdr's 90% popup, a second pick opens `sample.csv` (qsv table, ~40 rows) with `d`/`u` half-page scroll visibly moving it |
+| `hint-flow-tour.gif` | The hero take: `prefix+v` overlays a one-letter hint on every openable token; a letter pick opens `sample.md` (glow) in herdr's 90% popup, a second pick opens `sample.csv` (qsv table, ~40 rows) with `d`/`u` half-page scroll visibly moving it, a third pick UPPERCASES the letter to open `sample.md` again in a full persistent tab pane instead of the popup |
 | `linkify.gif` | `prefix+shift+l` opens the link overlay over real pane output; an SGR Ctrl+click opens a bare path locally, closing the preview returns to the link list, and a second Ctrl+click routes the original GitHub blob URL into the local checkout |
 | `tokens-tour.gif` | Every token kind in one pass: a plain path, a GitHub blob URL (opens the local file), a bare commit SHA (`git show`), a `#123` PR reference (`gh pr view`), a directory (`eza --tree`) |
 | `overlay-keys-tour.gif` | The three in-overlay keys: `d` (dirty-diff toggle), `e` (edit in `$EDITOR`), `o` (escalate to herdr-file-viewer) |
@@ -243,19 +243,28 @@ the tape file's own directory - always `cd` into the checkout first.
   target is what shifts the map, not the fixtures). Verify the live overlay
   frame before hard-coding a hint letter in a tape; don't assume it from an
   API-only probe.
-- **`hint-flow-tour.gif` verified**: one-dark theme throughout; frame indices
-  from a 5fps extraction of the optimized gif (148 frames, 29.56s). Frame 40
-  (t=7.8s) and frame 48 (t=9.4s): the dimmed snapshot with bright-yellow hint
-  keys on `notes.txt` (`f`), `sample.md` (`d`), `sample.csv` (`s`), and
-  `/dev/null` (`a`). Frame 56/62 (t=11.0-12.2s): `d` picked -> the 90% popup
-  renders `sample.md` via glow (`# Fruit Stand Setup` heading, bullet list,
-  ordered steps, all visible). Frame 96/100 (t=19.0-19.8s): the SECOND overlay
-  invoke shows the identical dim+hint frame with the "pick by letter" banner
-  in scrollback above it. Frame 112/118 (t=22.2-23.4s): `s` picked -> the qsv
-  table for `sample.csv`, aligned columns, rows `apple-01`...`jackfruit-29`
-  visible (pre-scroll). Frame 124 (t=24.6s): after `d`, the table scrolled to
-  its last page (`rambutan-30`...`rambutan-40`, `(END)` marker) - a real
-  half-page-down move. Frame 128/130 (t=25.4-25.8s): after `u`, back to
-  `apple-01`...`jackfruit-29` - the round trip confirmed. No internal path
+- **`hint-flow-tour.gif` verified (v2, adds the UPPERCASE tab-pane beat)**:
+  one-dark theme throughout. Raw frame indices are against the committed,
+  `gifsicle -O3 --colors 256`-optimized gif (341 frames, variable per-frame
+  delay via PIL, 39.8s total) - located by cumulative per-frame delay, same
+  dedup caveat as the render-*-tour gifs below (gifsicle merges frames during
+  optimization, so indices do not line up with fps math). Frame 95 (t=8.32s)
+  and frame 269 (t=25.36-30.36s, a single 5s-held frame): the dimmed overlay
+  with hints on `notes.txt` (`r`), `sample.md` (`d`), `sample.csv` (`s`), and
+  `/dev/null` (`a`) - read live before trusting the letter (see the landmine
+  below); it is the SAME map at the first invoke and the third, so `sample.md`
+  stayed `d`/`D` throughout this recording. Frame 100 (t=9.56-10.16s): `d`
+  picked -> the 90% "Preview" popup renders `sample.md` via glow (bordered,
+  inset from the pane) - unchanged from the original beat. Frame 187
+  (t=19.16-19.72s): `s` picked -> the qsv table for `sample.csv`
+  (`apple-01`...`jackfruit-29`, pre-scroll) - the `d`/`u` half-page scroll
+  beat survived re-recording. Frame 280 (t=35.04-35.64s, inside a ~6.3s span
+  of near-static frames from a blinking cursor): the THIRD pick, `D`
+  (uppercase), opens `sample.md` in a full persistent tab pane - a second tab
+  ("2") with NO popup border/inset, visibly distinct from frame 100's bordered
+  popup. Frame 284 (t=36.64s): `q` closes the tab cleanly, back to tab "1" -
+  no lingering empty tab. Frame 341 (t=39.76s, final frame): the end banner
+  (`o = file-viewer · e = editor · D = diff`) renders in the original pane,
+  proving focus returned correctly after the tab closed. No internal path
   beyond the workspace label `ql-demo-hint` (the fixture dir's own basename);
   no client/Dwarves data.
