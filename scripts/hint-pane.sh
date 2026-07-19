@@ -253,7 +253,8 @@ open_pick() {
     export QUICKLOOK_KEEP_CWD=1
     exec bash "$script_dir/open-in-viewer.sh" "${tokens[$i]}"
   fi
-  QUICKLOOK_PREVIEW_CWD="$PWD" exec bash "$script_dir/open-popup.sh" "${tokens[$i]}"
+  QUICKLOOK_PREVIEW_CWD="$PWD" QUICKLOOK_OPEN_PLACEMENT="${QUICKLOOK_OPEN_PLACEMENT:-popup}" \
+    exec bash "$script_dir/open-popup.sh" "${tokens[$i]}"
 }
 
 # hit_test <col> <row> -> token idx via $HIT, rc 1 on miss.
@@ -293,9 +294,18 @@ while IFS= read -rsn1 key <"$tty_in"; do
       ;;
     '') continue ;;
     *)
+      # UPPERCASE hint letter = open in a FULL TAB pane instead of the popup
+      # (Q stays cancel). Lowercase = popup, click = popup.
+      placement=popup
+      case "$key" in
+        [A-Z])
+          placement=tab
+          key="$(printf '%s' "$key" | tr 'A-Z' 'a-z')"
+          ;;
+      esac
       idx="$(hint_index_for_key "$key" 2>/dev/null)" || continue
       [ "$idx" -lt "${#tokens[@]}" ] || continue
-      open_pick "$idx"
+      QUICKLOOK_OPEN_PLACEMENT="$placement" open_pick "$idx"
       ;;
   esac
 done

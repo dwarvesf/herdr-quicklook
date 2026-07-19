@@ -118,6 +118,14 @@ SH
   grep -qx 'QUICKLOOK_TOKEN=src/target.md' <<<"$output"
 }
 
+@test "open-popup honors QUICKLOOK_OPEN_PLACEMENT=tab (full pane, no size flags)" {
+  export HERDR_BIN_PATH="$STUB/herdr"
+  QUICKLOOK_OPEN_PLACEMENT=tab run bash "$ROOT/scripts/open-popup.sh" 'src/target.md'
+  [ "$status" -eq 0 ]
+  grep -qx 'tab' <<<"$output"
+  ! grep -qx -- '--width' <<<"$output"
+}
+
 @test "manifest registers the find overlay and action" {
   python3 - "$ROOT/herdr-plugin.toml" <<'PY'
 import sys
