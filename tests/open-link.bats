@@ -67,10 +67,10 @@ teardown() {
   [[ "$output" == *"$path_uri"* ]]
   [[ "$output" == *"$url_uri"* ]]
   # In-place overlay: the hint letter replaces the token's first char inside
-  # the snapshot line, inverse-video; the surrounding text is untouched.
+  # the snapshot line (black on bright yellow); the surrounding text stays.
   [[ "$output" == *"changed "* ]]
-  [[ "$output" == *$'\033[1;30;43ma\033[0m\033[4mrc/x.go:7\033[0m'* ]]
-  [[ "$output" == *$'\033[1;30;43ms\033[0m\033[4mttps://example.com/docs\033[0m'* ]]
+  [[ "$output" == *$'\033[0;1;30;48;5;226ma\033[0m\033[0;38;5;226mrc/x.go:7\033[0m'* ]]
+  [[ "$output" == *$'\033[0;1;30;48;5;226ms\033[0m\033[0;38;5;226mttps://example.com/docs\033[0m'* ]]
   [[ "$output" == *"Ctrl+click"* ]]
 }
 

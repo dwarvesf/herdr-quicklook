@@ -10,10 +10,10 @@
 # fork-free on purpose (keys via substring, URIs precomputed by the action):
 # the first paint and the hint paint are both single printf writes.
 #
-# Pluck-style render: the snapshot is re-printed verbatim, and each openable
-# token gets its hint LETTER overlaid on the token's first character (inverse
-# video), the rest of the token underlined - columns never shift, so the user
-# keeps the full context of the screen they were just reading. Every hinted
+# Pluck-style render: the snapshot is re-printed dimmed, and each openable
+# token gets its hint LETTER overlaid on the token's first character (black
+# on bright yellow), the rest of the token bright yellow - columns never
+# shift, so the user keeps the full context of the screen they were reading. Every hinted
 # token is also an OSC-8 sentinel link, so Ctrl+click opens the same way. A
 # token whose text cannot be re-found on its snapshot line falls into a short
 # list under the snapshot.
@@ -52,14 +52,19 @@ wait_close() {
   exit 0
 }
 
-# Vimium-badge hint: bold black on yellow. Token remainder underlined.
-H_KEY=$'\033[1;30;43m'
-H_TOK=$'\033[4m'
+# Pluck's scheme, Han's palette: the snapshot dims to dark grey so hints pop,
+# the token text goes bright yellow, and the hint badge is bold black on
+# BRIGHT yellow (256-color 226: the palette "yellow" renders orange under
+# one-dark). Every style opens with a reset so it never inherits the dim.
+DIM=$'\033[2;90m'
+RESET=$'\033[0m'
+H_KEY=$'\033[0;1;30;48;5;226m'
+H_TOK=$'\033[0;38;5;226m'
 H_OFF=$'\033[0m'
 OSC8_OFF=$'\033]8;;\033\\'
 
-HEADER_WAIT="${H_KEY}quicklook${H_OFF} hint: scanning…  · Esc/q cancel"
-HEADER_DONE="${H_KEY}quicklook${H_OFF} hint: type a letter or Ctrl+click to open · Esc/q cancel"
+HEADER_WAIT="${H_KEY} quicklook ${H_OFF} hint: scanning…  · Esc/q cancel"
+HEADER_DONE="${H_KEY} quicklook ${H_OFF} hint: type a letter or Ctrl+click to open · Esc/q cancel"
 
 NL=$'\n'
 CLR=$'\033[2J\033[H'
@@ -165,10 +170,10 @@ while IFS= read -r line || [ -n "$line" ]; do
       continue
     fi
     styled_for "$idx"
-    line="${line:0:$pos}${STYLED}${line:$((pos + ${#tok}))}"
+    line="${line:0:$pos}${STYLED}${DIM}${line:$((pos + ${#tok}))}"
     prev_start=$pos
   done
-  frame+="${line}${NL}"
+  frame+="${DIM}${line}${RESET}${NL}"
 done <"$snap_file"
 
 # Tokens whose text no longer matches their snapshot line (wrapped, trimmed
