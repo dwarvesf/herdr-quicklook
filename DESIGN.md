@@ -312,28 +312,38 @@ preview ───────────plugin pane open─────▶ prev
                                                    ▲
 recents ───────────plugin pane open─────▶ recents-pick pane
                                              └─ exec, same pane/TTY ───────────┘
+                                                   ▲
+find ───────────────plugin pane open────▶ find-pane (fzf + live bat preview)
+                                             └─ Enter: exec, same pane/TTY ───┘
 
 hint ──────────────plugin pane open─────▶ hint-pane (in-place hint overlay)
-     └ scan in a background subshell          ├─ keypress: exec, same pane/TTY ┘
-       (pane read is RPC-safe HERE)           └─ OSC-8 Ctrl+click ─▶ open-link ┘
+     └ scan in a background subshell          ├─ keypress/click ─▶ open-popup.sh
+       (pane read is RPC-safe HERE)           │    (spawn) ─▶ 90% popup pane (preview-pane.sh)
+                                               └─ OSC-8 Ctrl+click ─▶ open-link ┘
 repository URL Ctrl+click ────────────────────────────────▶ preview
 agent status hook ─▶ latest suggestion state ─▶ agent-suggestion ─▶ preview
 
 open-in-viewer ·····herdr socket: send-keys / send-text·····▶ herdr-file-viewer pane (a different plugin)
 ```
 
-`open-in-viewer`, `recents`, and `hint` cannot do interactive work inside
-their action command. They either open a plugin pane or drive an existing
-pane through the herdr socket. `recents-pane.sh` and `hint-pane.sh` `exec`
-`preview-pane.sh` after selection so resolution, rendering, and recents
-recording stay on one path (a directory pick routes into `open-in-viewer.sh`
-instead, so it lands in the real file viewer). Two herdr constraints pin
-this topology: **never open a plugin pane with `--cwd`** (herdr resolves the
-pane's relative manifest command against that cwd, finds nothing, and the
-pane flash-closes; every pane receives its cwd as an env var instead), and
-**never issue a server RPC from inside a server-spawned overlay pane** (it
-deadlocks; the overlay therefore reads two files the action prepared and a
-keypress, nothing else).
+`open-in-viewer`, `recents`, `find`, and `hint` cannot do interactive work
+inside their action command. They either open a plugin pane or drive an
+existing pane through the herdr socket. `recents-pane.sh` and `find-pane.sh`
+`exec` `preview-pane.sh` IN PLACE after selection, so the same pane that ran
+the picker becomes the reader. `hint-pane.sh` instead settles a pick (letter
+key or a plain click, SGR mouse tracking owned by that pane) by `exec`-ing
+`open-popup.sh`, which spawns a FRESH pane at `--placement popup --width 90%
+--height 90%` and execs `preview-pane.sh` there - the hint overlay is for
+choosing, the popup is for reading, so resolution, rendering, and recents
+recording all still stay on one code path, just not always the same pane (a
+directory pick routes into `open-in-viewer.sh` instead, so it lands in the
+real file viewer). Two herdr constraints pin this topology: **never open a
+plugin pane with `--cwd`** (herdr resolves the pane's relative manifest
+command against that cwd, finds nothing, and the pane flash-closes; every
+pane receives its cwd as an env var instead), and **never issue a server RPC
+from inside a server-spawned overlay pane** (it deadlocks; the overlay
+therefore reads two files the action prepared and a keypress, nothing
+else).
 
 ## Hint picker
 
@@ -365,9 +375,10 @@ overlay cannot RPC, so ALL herdr calls live in the action):
 2. It reads the pane's visible text ONCE (`pane read`), strips it, and
    writes the snapshot to a temp file. If the clipboard token is visible in
    that snapshot AND resolves, it opens IMMEDIATELY (directory ->
-   `open-in-viewer`, everything else -> `preview`), no overlay at all - and
-   a stale clipboard can never hijack the key, because the text must be on
-   screen. Otherwise it opens `hint-pane` right away and leaves the scan
+   `open-in-viewer`, everything else -> the popup via `open-popup.sh`), no
+   hint overlay at all - and a stale clipboard can never hijack the key,
+   because the text must be on screen. Otherwise it opens `hint-pane` right
+   away and leaves the scan
    running in a BACKGROUND subshell that writes the ranked token list
    (raw, line-no, precomputed OSC-8 URI, label) atomically.
 3. `hint-pane` (pane, real TTY, zero RPC) paints the dimmed snapshot

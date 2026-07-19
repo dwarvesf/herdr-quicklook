@@ -15,25 +15,32 @@ worktree="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 
 write_open_wrapper() {
   # A short relative-name wrapper around the REAL production entrypoint
-  # (scripts/open-preview.sh - the same script the prefix+v keybinding
-  # itself runs), so a tape can type "./open sample.png" instead of a long
-  # absolute path four times over, keeping each tour under its 30s budget.
+  # for a settled pick (scripts/open-popup.sh - the same script the hint
+  # flow's letter-pick / plain-click / clipboard-match arms all exec once a
+  # token is determined), so a tape can type "./open sample.png" instead of
+  # a long absolute path four times over, keeping each tour under its 30s
+  # budget. Renders land in herdr's native 90% popup, same surface as the
+  # hero hint-flow-tour.gif.
   #
-  # Two things this wrapper does that a bare `bash open-preview.sh <name>`
+  # Two things this wrapper does that a bare `bash open-popup.sh <name>`
   # typed at the prompt cannot: (1) it resolves <name> against ITS OWN
   # directory ("$dir/$1", always absolute) before handing it to
-  # open-preview.sh - open-preview.sh derives the overlay pane's cwd from
-  # $HERDR_PLUGIN_CONTEXT_JSON, which is only populated when herdr itself
-  # dispatches an action (a real keybinding, or `herdr plugin action
-  # invoke`), never when the script is just run as a plain shell command,
-  # so a bare relative filename would resolve against the overlay's own
-  # default cwd instead of this scratch dir and fail to open; (2) it
-  # redirects `herdr plugin pane open`'s own JSON acknowledgment (printed
-  # to THIS pane, not the new overlay pane) to /dev/null - undirected, that
-  # ack text pollutes the recording same as the existing tapes' own
-  # `>/dev/null 2>&1` on `herdr plugin action invoke preview` calls.
+  # open-popup.sh as $1 (the token) - open-popup.sh has no context JSON to
+  # derive a cwd from (it is not dispatched as a herdr action here, just
+  # run as a plain shell command), so a bare relative filename would
+  # resolve against the wrapper's own default cwd instead of this scratch
+  # dir and fail to open; (2) it sets QUICKLOOK_PREVIEW_CWD to the same
+  # scratch dir before the exec - the same precedent as hint.sh/
+  # hint-pane.sh's own `QUICKLOOK_PREVIEW_CWD="$PWD" exec bash
+  # ".../open-popup.sh"` calls - so preview-pane.sh cd's there before
+  # resolving (moot for an already-absolute token, but keeps the wrapper
+  # consistent with the real dispatch path); (3) it redirects `herdr plugin
+  # pane open`'s own JSON acknowledgment (printed to THIS pane, not the new
+  # popup pane) to /dev/null - undirected, that ack text pollutes the
+  # recording same as the existing tapes' own `>/dev/null 2>&1` on `herdr
+  # plugin action invoke preview` calls.
   # shellcheck disable=SC2016  # the $dir/$1 refs are literal, meant for the GENERATED wrapper, not this shell
-  printf '#!/bin/bash\ndir="%s"\nexec bash "%s/scripts/open-preview.sh" "$dir/$1" >/dev/null 2>&1\n' "$1" "$worktree" >"$1/open"
+  printf '#!/bin/bash\ndir="%s"\nQUICKLOOK_PREVIEW_CWD="$dir" exec bash "%s/scripts/open-popup.sh" "$dir/$1" >/dev/null 2>&1\n' "$1" "$worktree" >"$1/open"
   chmod +x "$1/open"
 }
 

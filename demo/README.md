@@ -149,22 +149,24 @@ the tape file's own directory - always `cd` into the checkout first.
   beyond the scratch clone's own `/private/tmp/demo/...` directory name; no
   client/Dwarves data.
 - **`herdr plugin pane open`'s own JSON acknowledgment pollutes the recording unless
-  redirected.** `scripts/open-preview.sh`, run directly (not through `herdr plugin
+  redirected.** `scripts/open-popup.sh`, run directly (not through `herdr plugin
   action invoke`), execs `herdr plugin pane open ...` with no output redirection of
   its own - its RPC reply (a `plugin_pane_opened` JSON blob) prints straight into the
-  INVOKING pane, not the new overlay. The three render-tour tapes drive every open
+  INVOKING pane, not the new popup. The three render-tour tapes drive every open
   through a tiny generated `open` wrapper (`render-anything-fixtures.sh`) that adds
   `>/dev/null 2>&1`, same convention as the existing tapes' `>/dev/null 2>&1` on
   `herdr plugin action invoke preview`.
-- **A bare relative filename does not resolve inside the overlay when the render is
-  driven by directly running `open-preview.sh`.** `open-preview.sh` derives the
-  overlay's cwd from `$HERDR_PLUGIN_CONTEXT_JSON`, which herdr populates only when
-  IT dispatches an action (a real keybinding, or `herdr plugin action invoke`) - a
-  plain shell invocation of the script never gets that context, so `resolve()`'s
-  first check (`[ -f "$p" ]`, cwd-relative) misses and the overlay reports
-  `quicklook: not a file I can find`. Fix: the same `open` wrapper resolves each
-  fixture to an ABSOLUTE path (`"$dir/$1"`) before handing it to
-  `open-preview.sh`, sidestepping the cwd question entirely.
+- **A bare relative filename is one accidental `cd` away from resolving against the
+  wrong directory when the render is driven by directly running `open-popup.sh`
+  outside herdr's own dispatch.** `open-popup.sh` takes its token as `$1` and
+  forwards `QUICKLOOK_PREVIEW_CWD` (env, or `$PWD` as a default) to the popup pane;
+  `preview-pane.sh` then `cd`s there before resolving - a plain shell invocation's
+  `$PWD` is wherever the wrapper happened to be run from, not necessarily the
+  fixture dir. Fix: the `open` wrapper resolves each fixture to an ABSOLUTE path
+  (`"$dir/$1"`) AND sets `QUICKLOOK_PREVIEW_CWD="$dir"` explicitly before handing it
+  to `open-popup.sh`, sidestepping the cwd question entirely - same precedent as
+  `hint.sh`/`hint-pane.sh`'s own `QUICKLOOK_PREVIEW_CWD="$PWD" exec bash
+  open-popup.sh` calls.
 - **chafa 1.18.2's `--animate` flag requires `--animate=BOOL`, not a bare flag.**
   `scripts/renderers/gif.sh`'s shipped invocation, `chafa --animate -d N -- <path>`,
   mis-parses `-d` as `--animate`'s value on this chafa version (`chafa: Animate mode
@@ -180,30 +182,54 @@ the tape file's own directory - always `cd` into the checkout first.
   loop, so it closes on the normal "press any key" prompt like every other still
   render. This is a real renderer-side finding worth a follow-up goal (out of scope
   for the docs/demo sub-goal that found it).
-- **`render-images-tour.gif` verified**: one-dark theme throughout; png renders as
-  inline `chafa` ANSI art (a halftone-like render of the linkify.gif first frame,
-  matching its screenshot-of-text content); the gif beat renders the same still-image
-  path (see the chafa landmine above) with no error text; the svg renders as three
-  solid-color shapes (blue square, red circle, green triangle) via `rsvg-convert` ->
-  `chafa`; the pdf beat shows the page-1 poster then the extracted text, both
-  cleanly closing. No internal paths beyond the scratch dir's own
-  `/private/tmp/ql-demo-images/sample.*` names; no client/Dwarves data.
-- **`render-docs-tour.gif` verified**: one-dark theme throughout; the markdown
-  renders via `glow` (heading, bullet list, fenced code block all visible); the
-  docx renders the SAME content via `pandoc` -> `glow` (byte-identical prose,
-  proving the conversion round-trips); the ipynb renders its markdown cell + code
-  cell via `pandoc`'s ipynb reader -> `glow`. No internal paths beyond
-  `/private/tmp/ql-demo-docs/sample.*`; no client/Dwarves data.
-- **`render-data-fallback.gif` verified**: one-dark theme throughout; the csv
-  renders as an aligned `qsv table`; the json renders pretty-printed via `jq .`;
-  the sqlite beat shows the table list (`users`, `orders`) + `CREATE TABLE`
-  schema, never a row dump; the negative-control beat (`mystery.ipynb`, the first
-  800 bytes of `/bin/ls`, real Mach-O binary data wearing a `.ipynb` extension)
-  shows `file(1)`'s real type description, a colorized `hexyl` hexdump, and the
-  install hint `install jupyter/nbconvert for a richer preview of .ipynb files` -
-  the always-on guard catching a file no renderer will touch. No internal paths
-  beyond `/private/tmp/ql-demo-data/*`; every fixture is invented placeholder
-  content (fruit names); no client/Dwarves data.
+- **`render-images-tour.gif` re-recorded through the popup surface, verified**:
+  the fixture `open` wrapper now execs `scripts/open-popup.sh` (was
+  `open-preview.sh`), so every beat below opens in herdr's bordered "Preview"
+  popup - visibly inset from the pane, not a full-pane overlay - same surface
+  as the hero `hint-flow-tour.gif`. One-dark theme throughout. Raw frame
+  indices are against the COMMITTED, `gifsicle -O3 --colors 256`-optimized
+  gif (221 frames, variable per-frame delay, 34.68s total) - `gifsicle`
+  dedups/merges frames during that optimization pass, so these indices do
+  NOT line up with fps math or with the pre-optimization recording; they
+  were located by cumulative per-frame delay against each beat's known
+  open+hold timing. Frame 56 (t=7.52s): the png (mandelbrot) as inline
+  `chafa` ANSI art, inside the popup. Frame 109 (t=16.08s): the gif beat
+  mid-animation, same popup, same chafa path (see the chafa landmine below).
+  Frame 162 (t=24.44s): the svg's three solid shapes (blue square, red
+  circle, green triangle) via `rsvg-convert` -> `chafa`, in the popup. Frame
+  217 (t=33.28s): the pdf's page-1 poster (the same mandelbrot image,
+  `sips`-converted), in the popup, closing cleanly on `q`. No internal paths
+  beyond the scratch dir's own `/private/tmp/ql-demo-images/sample.*` names;
+  no client/Dwarves data.
+- **`render-docs-tour.gif` re-recorded through the popup surface, verified**:
+  same `open` -> `open-popup.sh` wrapper change. One-dark theme throughout.
+  Raw frame indices are against the committed, optimized gif (224 frames,
+  variable delay, 30.76s total), same dedup caveat as above. Frame 75
+  (t=9.44s): the markdown popup shows `# Fruit Stand Notes` (heading, bullet
+  list, fenced code block). Frame 146 (t=19.44s): the docx popup renders
+  byte-identical prose via `pandoc` -> `glow` (same popup surface, proving
+  the conversion round-trips). Frame 219 (t=29.04s): the ipynb popup renders
+  its markdown cell (`# Fruit Counter`) + code cell via `pandoc`'s ipynb
+  reader -> `glow`. No internal paths beyond `/private/tmp/ql-demo-docs/sample.*`;
+  no client/Dwarves data.
+- **`render-data-fallback.gif` re-recorded through the popup surface,
+  verified**: same `open` -> `open-popup.sh` wrapper change. One-dark theme
+  throughout. Raw frame indices are against the committed, optimized gif
+  (252 frames, variable delay, 36.88s total), same dedup caveat as above.
+  Frame 66 (t=8.04s): the csv popup shows the aligned `qsv table`
+  (fruit/qty/price_usd rows). Frame 119 (t=16.52s): the json popup shows the
+  pretty-printed `jq .` output (`fruit_stand` object, nested items). Frame
+  181 (t=25.6s): the sqlite popup shows the table list (`orders`, `users`) +
+  `CREATE TABLE` schema, never a row dump. Frame 246 (t=34.2s): the
+  negative-control beat (`mystery.ipynb`, the first 800 bytes of `/bin/ls`,
+  real Mach-O binary data wearing a `.ipynb` extension) shows the always-on
+  guard inside the SAME popup surface
+  - `file(1)`'s real type description, a colorized `hexyl` hexdump, and the
+  install hint `install jupyter/nbconvert for a richer preview of .ipynb
+  files` - proving the fallback guard lands in the popup too, not a
+  different surface. No internal paths beyond `/private/tmp/ql-demo-data/*`;
+  every fixture is invented placeholder content (fruit names); no
+  client/Dwarves data.
 - **Hint-key assignment shifts with whatever is ON SCREEN, including the invoking
   command itself.** `hint`'s ranking is tier-then-bottom-of-screen-first over
   `asdfghjklwertyuiopzxcvbnm`; typing `herdr plugin action invoke hint --plugin
