@@ -446,6 +446,7 @@ resolve_any_token() {
   # so expand once here (never inside quotes on screen, always the user's own
   # home - a remote host's ~ is out of scope by design).
   case "$raw" in
+    # shellcheck disable=SC2088  # literal ~/ match is the point: WE expand it
     '~/'*) raw="$HOME/${raw#'~/'}" ;;
     '~') raw="$HOME" ;;
   esac
