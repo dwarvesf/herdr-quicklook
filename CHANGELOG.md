@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+- A settled pick (hint key, mouse click, or the clipboard gate) now opens in
+  herdr's 90% POPUP surface; the overlay is for choosing, the popup for
+  reading. Plain left-click on a hinted token opens it (SGR mouse tracking
+  inside the overlay - no Ctrl needed there).
+
 - The bat header line is gone from the text renderer (the less status line
   already shows the full path, and the header wrapped on narrow overlays).
 
