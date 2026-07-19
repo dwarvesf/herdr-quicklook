@@ -124,6 +124,29 @@ teardown() {
   [ "$output" = "$(printf '~/somewhere/deep/nothing	path	1')" ]
 }
 
+@test "bare domain -> kind url, in both scan modes" {
+  run pick_scan_text <<<'visit hermes.d.foundation today'
+  [ "$output" = "$(printf 'hermes.d.foundation\turl\t1')" ]
+  QUICKLOOK_SCAN_FAST=1 run pick_scan_text <<<'visit hermes.d.foundation today'
+  [ "$output" = "$(printf 'hermes.d.foundation\turl\t1')" ]
+}
+
+@test "bare domain with an extension-looking TLD (herdr.dev) is a url, not a path" {
+  QUICKLOOK_SCAN_FAST=1 run pick_scan_text <<<'docs at herdr.dev now'
+  [ "$output" = "$(printf 'herdr.dev\turl\t1')" ]
+}
+
+@test "file extensions never misclassify as domains (md, go stay path-shaped)" {
+  QUICKLOOK_SCAN_FAST=1 run pick_scan_text <<<'see CHANGELOG.md and missing/x.go here'
+  [[ "$output" != *"url"* ]]
+}
+
+@test "resolve: a bare domain opens the browser with an https scheme" {
+  resolve_any_token 'hermes.d.foundation'
+  [ "$RESOLVED_MODE" = "browser" ]
+  [ "$RESOLVED_TARGET" = "https://hermes.d.foundation" ]
+}
+
 @test "fast mode: a github blob URL stays a url (no local-checkout probe)" {
   QUICKLOOK_SCAN_FAST=1 run pick_scan_text <<<'https://github.com/o/repo/blob/main/sub/inrepo.md'
   [ "$output" = "$(printf 'https://github.com/o/repo/blob/main/sub/inrepo.md\turl\t1')" ]

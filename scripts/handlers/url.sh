@@ -9,6 +9,11 @@ match_url() {
 
 handle_url() {
   RESOLVED_TARGET="$1"
+  # A bare domain has no scheme; the browser opener needs one.
+  case "$1" in
+    http://* | https://*) ;;
+    *) RESOLVED_TARGET="https://$1" ;;
+  esac
   RESOLVED_LINE=""
   RESOLVED_MODE="browser"
   return 0

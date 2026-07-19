@@ -233,12 +233,20 @@ pick_token() {
 }
 
 # classify_token <raw> -> github | url | path
+# Bare domains (hermes.d.foundation, herdr.dev) are urls too, gated on a TLD
+# allowlist so file extensions never misclassify (README.md, main.go, run.sh
+# stay paths). Curated, not exhaustive: extend the list when a real domain
+# misses. A local FILE named like a domain loses to the domain - acceptable.
+_BARE_DOMAIN_RE='^([A-Za-z0-9-]+\.)+(com|net|org|io|ai|co|app|dev|so|ws|xyz|info|foundation|cloud|network|systems|site|tech|online|me|vn)(:[0-9]+)?(/[^[:space:]]*)?$'
+
 classify_token() {
   case "$1" in
     https://github.com/*/blob/* | https://github.com/*/raw/* | https://raw.githubusercontent.com/*)
       printf 'github' ;;
     http://* | https://*) printf 'url' ;;
-    *) printf 'path' ;;
+    *)
+      if [[ "$1" =~ $_BARE_DOMAIN_RE ]]; then printf 'url'; else printf 'path'; fi
+      ;;
   esac
 }
 

@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+- Bare domains (hermes.d.foundation, herdr.dev) classify as urls and open
+  the browser with an https scheme, gated on a TLD allowlist so file
+  extensions (.md, .go, .sh) never misclassify.
+
 - A visible-but-unresolvable clipboard path now drops into the fzf finder
   pre-seeded as the query (partial/typo paths land on their closest match).
 
