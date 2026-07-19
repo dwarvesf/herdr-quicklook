@@ -538,7 +538,7 @@ resolve_any_token() {
 #     fixed output variable costs nothing.
 #   - The final tier/sort ranking is an awk + `sort` + awk pipeline instead
 #     of a bash `local -A` map and a bash `printf`-per-token sort-key loop.
-#   Net effect: no bash-version guard needed any more - pick-pane.sh no
+#   Net effect: no bash-version guard needed any more - hint-era panes no
 #   longer checks $BASH_VERSINFO before calling pick_acquire. See
 #   DECISIONS.md (ops-toolkit) for the measured before/after on both a
 #   modern bash and macOS's real bash 3.2.
@@ -594,22 +594,24 @@ resolve_any_token() {
 # else is the pure core, fixture-text/fixture-file testable, no live pane.
 #
 # ---- The action/pane wiring contract (pinned for SG-02 / SG-03) ----
-# Action id `pick` -> scripts/pick.sh (no TTY, mirrors scripts/recents.sh):
+# Action id `hint` -> scripts/hint.sh (no TTY, mirrors scripts/recents.sh):
 #   1. captures the origin pane id BEFORE opening the overlay
 #      (`herdr pane current | jq -r '.result.pane.pane_id'` - once the
-#      pick-pane overlay is focused, `pane current` returns the OVERLAY,
+#      hint-pane overlay is focused, `pane current` returns the OVERLAY,
 #      not the origin the user was in);
-#   2. reads the clipboard token (pick_token / clip_read);
-#   3. opens the `pick-pane` overlay, forwarding
-#      `--env QUICKLOOK_PICK_ORIGIN_PANE=<id>` (+ `--cwd <origin cwd>` +
-#      `--env QUICKLOOK_PICK_CLIP=<clip>` when a clipboard value exists).
-# Pane id `pick-pane` -> scripts/pick-pane.sh (real TTY, mirrors
-# scripts/recents-pane.sh):
-#   4. `pick_acquire "$QUICKLOOK_PICK_ORIGIN_PANE"` -> the candidate list;
-#   5. builds the clipboard-first fzf list (row 1 = the clipboard token
-#      IF it resolves, deduped out of the on-screen rows below it) +
-#      `pick_count_header`'s output as the fzf `--header`;
-#   6. Enter -> `export QUICKLOOK_TOKEN=<raw>; exec bash preview-pane.sh`
+#   2. reads the clipboard token (clip_read) and runs the WHOLE
+#      `pick_acquire` scan HERE (an RPC from inside a server-spawned
+#      overlay pane deadlocks - see the hint.sh header), writing the
+#      clipboard-first "raw<TAB>label" list to a temp file;
+#   3. opens the `hint-pane` overlay, forwarding
+#      `--env QUICKLOOK_HINT_TOKENS_FILE=<file>` +
+#      `--env QUICKLOOK_HINT_CWD=<origin cwd>` (env, never --cwd: --cwd
+#      breaks the pane's relative command resolution).
+# Pane id `hint-pane` -> scripts/hint-pane.sh (real TTY, no RPC at all):
+#   4. reads the prepared token list, renders one hint key per row, each
+#      row also an OSC-8 sentinel link (Ctrl+click -> open-link handler);
+#   5. a hint keypress -> `export QUICKLOOK_TOKEN=<raw>; exec bash
+#      preview-pane.sh` in this same pane.
 #      (the SAME open path recents-pane.sh already reuses - resolve +
 #      render + record_open, zero new open code);
 #   7. Esc -> close, nothing opened; zero candidates and no resolvable

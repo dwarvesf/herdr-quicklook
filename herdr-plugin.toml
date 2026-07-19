@@ -54,43 +54,20 @@ description = "Reopen the most recently opened path/URL, or fzf-pick among the l
 command = ["bash", "scripts/recents.sh"]
 
 [[panes]]
-id = "pick-pane"
-title = "Pick"
-placement = "overlay"
-command = ["bash", "scripts/pick-pane.sh"]
-
-[[actions]]
-id = "pick"
-platforms = ["linux", "macos"]
-title = "Pick anything openable on screen"
-description = "List every openable token currently on screen (path, URL, SHA, #ref, dir, filename), clipboard-preselected when it resolves; Enter opens the pick in the preview overlay."
-command = ["bash", "scripts/pick.sh"]
-
-[[panes]]
 id = "hint-pane"
 title = "Hint"
 placement = "overlay"
 command = ["bash", "scripts/hint-pane.sh"]
 
+# The one picker. Supersedes the fzf pick-pane, the herdr-pluck pluck-chain,
+# and the linkify overlay: every row carries a hint KEY and an OSC-8 sentinel
+# link, so keyboard and Ctrl+click land on the same open path.
 [[actions]]
 id = "hint"
 platforms = ["linux", "macos"]
 title = "Hint-pick anything openable on screen"
-description = "Overlay every openable token on screen with a one-key hint label; press the key to resolve + open it immediately. No fzf, no herdr-pluck."
+description = "Overlay every openable token on screen with a one-key hint label; press the key (or Ctrl+click the row) to resolve + open it immediately. No fzf, no herdr-pluck."
 command = ["bash", "scripts/hint.sh"]
-
-[[panes]]
-id = "linkify-pane"
-title = "Quicklook Links"
-placement = "overlay"
-command = ["bash", "scripts/linkify-pane.sh"]
-
-[[actions]]
-id = "linkify"
-platforms = ["linux", "macos"]
-title = "Make pane tokens clickable"
-description = "Render every openable token from the focused pane as a Ctrl-clickable link in a refreshable overlay."
-command = ["bash", "scripts/linkify.sh"]
 
 [[actions]]
 id = "open-link"
@@ -105,13 +82,6 @@ platforms = ["linux", "macos"]
 title = "Open the latest agent suggestion"
 description = "Open the newest token detected by the opt-in agent-status suggestion hook."
 command = ["bash", "scripts/open-suggestion.sh"]
-
-[[actions]]
-id = "pluck-chain"
-platforms = ["linux", "macos"]
-title = "Pluck a token, then quick-look it"
-description = "Show herdr-pluck's hint overlay; on pick, open the token immediately in the preview overlay, no extra keypress. Falls back to the plain clipboard flow when herdr-pluck is not installed."
-command = ["bash", "scripts/pluck-chain.sh"]
 
 [[link_handlers]]
 id = "virtual-token"

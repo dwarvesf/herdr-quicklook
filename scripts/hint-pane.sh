@@ -52,11 +52,18 @@ fi
 
 render() {
   printf '\033[2J\033[H'
-  printf 'Quicklook hint · press a key to open · Esc/q cancel\n\n'
-  local i=0 key
+  printf 'Quicklook hint · press a key or Ctrl+click to open · Esc/q cancel\n\n'
+  local i=0 key uri
   while [ "$i" -lt "${#tokens[@]}" ]; do
     key="$(hint_key_for_index "$i")"
-    printf '  [%s]  %s\n' "$key" "${labels[$i]}"
+    # Each label is also an OSC-8 link on the plugin's sentinel URI, so the
+    # same row supports Ctrl+click via the open-link handler (the linkify
+    # transport from PR #22, folded into this one overlay).
+    if uri="$(quicklook_link_uri "${tokens[$i]}")"; then
+      printf '  [%s]  \033]8;;%s\033\\%s\033]8;;\033\\\n' "$key" "$uri" "${labels[$i]}"
+    else
+      printf '  [%s]  %s\n' "$key" "${labels[$i]}"
+    fi
     i=$((i + 1))
   done
 }

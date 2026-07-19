@@ -10,8 +10,8 @@
 # hands the finished token+label list to the overlay via a temp file. The overlay
 # then only renders and reads a keypress - no RPC, no hang.
 #
-# Origin pane id is captured BEFORE the overlay steals focus (see the pick.sh
-# header for the focus race). The origin repo rides as an env var, NOT --cwd:
+# Origin pane id is captured BEFORE the overlay steals focus (once the overlay
+# is focused, `pane current` returns the overlay). The origin repo rides as an env var, NOT --cwd:
 # --cwd makes herdr resolve the pane's relative command against the repo and the
 # pane flash-closes (file not found).
 set -u
