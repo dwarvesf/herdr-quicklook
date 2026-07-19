@@ -23,8 +23,10 @@ set -- plugin pane open \
   --placement overlay \
   --focus
 
+# env, never --cwd: --cwd breaks the pane's relative command resolution and
+# the pane flash-closes (herdr resolves `bash scripts/...` against it).
 if [ -n "$repo" ] && [ -d "$repo" ]; then
-  set -- "$@" --cwd "$repo"
+  set -- "$@" --env "QUICKLOOK_PREVIEW_CWD=$repo"
 fi
 
 # Agent-push: a token argument rides into the pane as $QUICKLOOK_TOKEN (env is

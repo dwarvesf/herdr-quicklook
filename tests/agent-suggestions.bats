@@ -115,7 +115,7 @@ set_event() {
   [ "$status" -eq 0 ]
   grep -q 'command:plugin pane open' "$HERDR_LOG"
   grep -qx 'QUICKLOOK_TOKEN=src/new.go:11' <<<"$output"
-  grep -qx "$FIX/repo" <<<"$output"
+  grep -qx "QUICKLOOK_PREVIEW_CWD=$FIX/repo" <<<"$output"
 }
 
 @test "latest suggestion action opens saved token with its original cwd" {
@@ -124,5 +124,5 @@ set_event() {
   run bash "$OPEN"
   [ "$status" -eq 0 ]
   grep -qx 'QUICKLOOK_TOKEN=src/new.go:13' <<<"$output"
-  grep -qx "$FIX/repo" <<<"$output"
+  grep -qx "QUICKLOOK_PREVIEW_CWD=$FIX/repo" <<<"$output"
 }

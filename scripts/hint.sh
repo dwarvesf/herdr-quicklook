@@ -47,18 +47,6 @@ fi
 
 clip="$(clip_read)"
 
-# Clipboard-first, IMMEDIATE: the user who just selected+copied the exact
-# token on screen wants it open, not a picker. If the clipboard resolves,
-# route it by type right now - directory to the real file-viewer, everything
-# else (file/URL/SHA) through the preview pane - and never open the overlay.
-# An unresolvable/stale clipboard falls through to the hint flow.
-if [ -n "$clip" ] && resolve_any_token "$clip" >/dev/null 2>&1; then
-  if [ "${RESOLVED_MODE:-}" = "viewer" ]; then
-    exec bash "$script_dir/open-in-viewer.sh" "$clip"
-  fi
-  exec bash "$script_dir/open-preview.sh" "$clip"
-fi
-
 raw_file="$(mktemp "${TMPDIR:-/tmp}/quicklook-hint-raw.XXXXXX")"
 snap_file="$(mktemp "${TMPDIR:-/tmp}/quicklook-hint-snap.XXXXXX")"
 tokens_file="${TMPDIR:-/tmp}/quicklook-hint-tok.$$"
@@ -67,6 +55,21 @@ if [ -n "$origin_pane" ]; then
   "$herdr_bin" pane read "$origin_pane" --source "${QUICKLOOK_PICK_SOURCE:-visible}" --format text 2>/dev/null >"$raw_file"
 fi
 _pick_strip_ansi <"$raw_file" >"$snap_file"
+
+# Clipboard-first, IMMEDIATE: the user who just selected+copied the exact
+# token ON SCREEN wants it open, not a picker. Gated on the text actually
+# being visible in the origin snapshot, so a stale clipboard from an hour ago
+# never hijacks prefix+v. If it is visible and resolves, route it by type
+# right now - directory to the real file-viewer, everything else (file/URL/
+# SHA) through the preview pane - and never open the overlay.
+if [ -n "$clip" ] && grep -qF -- "$clip" "$snap_file" 2>/dev/null \
+  && resolve_any_token "$clip" >/dev/null 2>&1; then
+  rm -f "$raw_file" "$snap_file" 2>/dev/null
+  if [ "${RESOLVED_MODE:-}" = "viewer" ]; then
+    exec bash "$script_dir/open-in-viewer.sh" "$clip"
+  fi
+  exec bash "$script_dir/open-preview.sh" "$clip"
+fi
 
 # Background scan. Token list line: `raw<TAB>line-no<TAB>osc8-uri<TAB>label`
 # (URI precomputed here so the overlay's render loop never forks jq). Row 1 is
