@@ -25,7 +25,6 @@ set -- plugin pane open \
   --plugin herdr-quicklook \
   --entrypoint recents-pick \
   --placement overlay \
-  --width 90% --height 90% \
   --focus
 
 if [ -n "$repo" ] && [ -d "$repo" ]; then

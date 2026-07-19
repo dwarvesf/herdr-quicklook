@@ -2,9 +2,8 @@
 
 ## Unreleased
 
-- Overlays open at 90% of the pane; the bat header line is gone (the less
-  status line already shows the full path, and the header wrapped on narrow
-  overlays).
+- The bat header line is gone from the text renderer (the less status line
+  already shows the full path, and the header wrapped on narrow overlays).
 
 - Workspace sweep: a relative path referenced from another repo's pane
   resolves by probing each root's first-level children (root/<repo>/<path>),
