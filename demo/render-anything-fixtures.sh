@@ -167,10 +167,10 @@ See `sample.csv` for the seed data this imports.
 EOF
 {
   echo "fruit,qty,price_usd"
-  fruits="apple banana mango kiwi papaya dragonfruit lychee durian jackfruit rambutan"
+  fruits=(apple banana mango kiwi papaya dragonfruit lychee durian jackfruit rambutan)
   n=1
   while [ "$n" -le 40 ]; do
-    f=$(printf '%s\n' $fruits | sed -n "$(((n - 1) % 10 + 1))p")
+    f="${fruits[$(((n - 1) % 10))]}"
     printf '%s-%02d,%d,%d.%02d\n' "$f" "$n" $((n * 3 % 97 + 5)) $((n % 9 + 1)) $((n * 7 % 100))
     n=$((n + 1))
   done
