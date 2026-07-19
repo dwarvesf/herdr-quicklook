@@ -29,3 +29,9 @@
 # QUICKLOOK_AGENT_SCAN_LINES: recent-unwrapped lines retained for the working
 # baseline and completion diff. Invalid values fall back to 300.
 #QUICKLOOK_AGENT_SCAN_LINES=300
+
+# Hint picker: re-enable bare-word fuzzy filename hints (noisy, off by default).
+#QUICKLOOK_HINT_NAMES=1
+
+# Hint picker: restore the slower fully-verified scan instead of shape-first.
+#QUICKLOOK_HINT_VERIFIED=1
