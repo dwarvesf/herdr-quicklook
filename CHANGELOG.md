@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+## 0.4.0 (2026-07-20)
+
 - UPPERCASE hint letter opens the pick in a full persistent tab pane;
   lowercase (and click) keep the 90% popup.
 
