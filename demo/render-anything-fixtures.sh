@@ -41,25 +41,14 @@ write_open_wrapper() {
 img_dir=/private/tmp/ql-demo-images
 mkdir -p "$img_dir"
 sips -s format png "$worktree/demo/linkify.gif" --out "$img_dir/sample.png" >/dev/null
-# A SINGLE-FRAME gif, not a real animation and not a repo demo recording.
-# Two independent landmines rule out anything with more than one frame, live
-# with the chafa 1.18.2 on this machine: (1) gif.sh's shipped invocation is
-# `chafa --animate -d N -- <path>` - chafa 1.18.2 requires `--animate=BOOL`
-# (space-separated `--animate -d` mis-parses "-d" AS --animate's value:
-# "chafa: Animate mode must be one of [on, off]"), so that call always
-# errors and falls through to gif.sh's own fallback, `chafa --format symbols
-# -- <path>` with NO --animate/-d at all; (2) chafa defaults --animate to ON
-# and an unset --duration to INFINITE for an animation, so on a real
-# multi-frame gif that fallback call itself free-runs forever in a real TTY
-# (confirmed live via the herdr socket API: pane stayed open unbounded,
-# `ps` showed no dead process, only cursor-blink-level diffs between
-# polls). A single-frame file sidesteps both: chafa has nothing to loop and
-# the render (still image.sh path, reused via render_gif's fallback) exits
-# straight to the "press any key to close" prompt like every other still
-# render. This is a real, worth-flagging renderer-side finding for a future
-# goal (out of scope here - demo/docs only); see the tape's own header
-# comment and the sub-goal's PR deviations.
-ffmpeg -y -f lavfi -i "mandelbrot=size=200x150:rate=1" -frames:v 1 "$img_dir/sample.gif" >/dev/null 2>&1
+# A REAL multi-frame animated gif (8 frames @ 4fps = 2s of source animation).
+# Safe now that #35 (97bc94d) fixed gif.sh's chafa invocation to
+# `--animate=on` (chafa 1.18.2 requires an explicit =BOOL) and added a real
+# wall-clock kill bound (_GIF_ANIMATE_DURATION, default 8s, overridable via
+# QUICKLOOK_GIF_ANIMATE_DURATION) - the tape sets that env var to 4 so the
+# animate beat plays through this fixture's ~2s of frames and stops well
+# inside the recording's per-beat time budget.
+ffmpeg -y -f lavfi -i "mandelbrot=size=200x150:rate=4" -t 2 "$img_dir/sample.gif" >/dev/null 2>&1
 cat >"$img_dir/sample.svg" <<'EOF'
 <svg xmlns="http://www.w3.org/2000/svg" width="200" height="200">
   <rect x="10" y="10" width="80" height="80" fill="#61afef"/>

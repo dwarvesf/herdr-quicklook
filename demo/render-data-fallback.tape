@@ -13,6 +13,11 @@
 # a neutral /private/tmp scratch dir (never /tmp), so no internal worktree
 # path is ever visible on screen.
 #
+# Every `./open` beat holds a 3.5-4s open+paint delay (the overlay pane has
+# to spawn and the renderer has to run before anything is on screen) THEN a
+# 2s+ hold of the rendered content before closing (`q`, every renderer here
+# is paged) - the actual render is the money shot, not the typed command.
+#
 # Run from THIS checkout (Output path is relative to vhs's own cwd):
 #   ./demo/render-anything-fixtures.sh && vhs demo/render-data-fallback.tape
 Output demo/render-data-fallback.gif
@@ -21,7 +26,7 @@ Set FontSize 15
 Set Width 1400
 Set Height 800
 Set Padding 12
-Set TypingSpeed 30ms
+Set TypingSpeed 15ms
 
 Hide
 Type "LANG=en_US.UTF-8 LC_ALL=en_US.UTF-8 env -u HERDR_PANE_ID -u HERDR_SOCKET_PATH -u HERDR_TAB_ID -u HERDR_WORKSPACE_ID -u HERDR_ENV EDITOR=vim herdr --session demo-data-$RANDOM"
@@ -45,36 +50,40 @@ Sleep 700ms
 # 1. csv -> qsv table
 Type "./open sample.csv"
 Enter
-Sleep 3s
+Sleep 4s
+Sleep 2.5s
 Type "q"
-Sleep 800ms
+Sleep 600ms
 
 # 2. minified json -> jq .
 Type `printf '\033[7m ▶ json: jq . (pretty-printed) \033[0m\n'`
 Enter
-Sleep 600ms
+Sleep 400ms
 Type "./open sample.json"
 Enter
-Sleep 3s
+Sleep 4s
+Sleep 2.5s
 Type "q"
-Sleep 800ms
+Sleep 600ms
 
 # 3. sqlite -> table list + schema, never a row dump
 Type `printf '\033[7m ▶ sqlite: table list + schema (never a row dump) \033[0m\n'`
 Enter
-Sleep 600ms
+Sleep 400ms
 Type "./open sample.db"
 Enter
-Sleep 3s
+Sleep 4s
+Sleep 2.5s
 Type "q"
-Sleep 800ms
+Sleep 600ms
 
 # 4. unknown/corrupt binary -> the always-on fallback guard (NEGATIVE CONTROL)
 Type `printf '\033[7m ▶ unknown binary: file(1) + hexyl + install hint \033[0m\n'`
 Enter
-Sleep 600ms
+Sleep 400ms
 Type "./open mystery.ipynb"
 Enter
-Sleep 3s
+Sleep 4s
+Sleep 2.5s
 Type "q"
 Sleep 600ms

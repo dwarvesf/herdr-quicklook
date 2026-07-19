@@ -4,10 +4,16 @@
 # `open` wrapper this tape types). `./open <fixture>` is a one-line wrapper
 # (`exec bash <worktree>/scripts/open-preview.sh "$@"`) around the real
 # production `preview` entrypoint - the SAME script the `prefix+v`
-# keybinding runs, just a short relative name so the <30s budget survives
-# three separate opens. Fixtures live in a neutral /private/tmp scratch dir
-# (never /tmp - macOS's /tmp is a symlink and breaks repo-containment
-# checks), so no internal worktree path is ever visible on screen.
+# keybinding runs, just a short relative name so the recording survives
+# three separate opens without eating the budget on a long absolute path.
+# Fixtures live in a neutral /private/tmp scratch dir (never /tmp -
+# macOS's /tmp is a symlink and breaks repo-containment checks), so no
+# internal worktree path is ever visible on screen.
+#
+# Every `./open` beat holds a 3.5-4s open+paint delay (the overlay pane has
+# to spawn and glow has to render before anything is on screen) THEN a 2s+
+# hold of the rendered content before closing (`q`, glow is paged) - the
+# actual render is the money shot, not the typed command.
 #
 # Run from THIS checkout (Output path is relative to vhs's own cwd):
 #   ./demo/render-anything-fixtures.sh && vhs demo/render-docs-tour.tape
@@ -41,7 +47,8 @@ Sleep 1s
 # 1. markdown -> glow
 Type "./open sample.md"
 Enter
-Sleep 3s
+Sleep 4s
+Sleep 2.5s
 Type "q"
 Sleep 800ms
 
@@ -51,7 +58,8 @@ Enter
 Sleep 600ms
 Type "./open sample.docx"
 Enter
-Sleep 3s
+Sleep 4s
+Sleep 2.5s
 Type "q"
 Sleep 800ms
 
@@ -61,6 +69,7 @@ Enter
 Sleep 600ms
 Type "./open sample.ipynb"
 Enter
-Sleep 3s
+Sleep 4s
+Sleep 2.5s
 Type "q"
 Sleep 800ms
