@@ -445,8 +445,8 @@ resolve_any_token() {
   # A copied shell path routinely arrives tilde-form; no handler expands it,
   # so expand once here (never inside quotes on screen, always the user's own
   # home - a remote host's ~ is out of scope by design).
+  # shellcheck disable=SC2088  # literal ~/ match is the point: WE expand it
   case "$raw" in
-    # shellcheck disable=SC2088  # literal ~/ match is the point: WE expand it
     '~/'*) raw="$HOME/${raw#'~/'}" ;;
     '~') raw="$HOME" ;;
   esac
