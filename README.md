@@ -99,7 +99,8 @@ valid action id if you'd rather bind that directly instead.
 | `q` or `Esc Esc` | Close the overlay (a bare Esc cannot coexist with arrow-key scrolling in less, so quit is double-Esc) |
 | `o` (or `v`) | **Escalate**: close the overlay and open this file, at the same line, in the herdr-file-viewer pane (when that plugin is installed) |
 | `e` | **Edit**: open this file, at the same line, in `$EDITOR` (config-overridable, default `zed --wait`); the overlay resumes when the editor exits |
-| `d` | **Diff**: open a nested pager on `git diff` for this file (delta-colored if installed, else git's own color); press `d` again (or `q`) to close it and resume the file view. A clean file just prints a no-changes notice |
+| `D` | **Diff** (shift-d): open a nested pager on `git diff` for this file (delta-colored if installed, else git's own color); `q` closes it and resumes the file view. A clean file just prints a no-changes notice. Lowercase `d` stays less's half-page-down scroll |
+| `d` / `u`, `j` / `k`, `Space` / `b`, `g` / `G` | less's own navigation: half-page down/up, line down/up, page forward/back, top/bottom |
 | `/`, `n`, `N` | Search inside the file |
 | arrows / PgUp / PgDn | Scroll |
 
@@ -125,7 +126,7 @@ Repository URLs (GitHub blob/raw/PR, GitLab blob, Bitbucket source) are ALSO Ctr
 
 ## Find a file (`prefix+/` suggested)
 
-The `find` action opens an fzf overlay over the repo's tracked files (outside a repo, a bounded `find`), with a live bat preview rendering WHILE you type. Enter opens the pick in the same preview overlay as every other open, so `o`/`e`/`d` keep working; Esc closes. This is the proactive complement to the passive bare-name fallback (a copied ambiguous filename already fzf-picks among its matches).
+The `find` action opens an fzf overlay over the repo's tracked files (outside a repo, a bounded `find`), with a live bat preview rendering WHILE you type. Enter opens the pick in the same preview overlay as every other open, so `o`/`e`/`D` keep working; Esc closes. This is the proactive complement to the passive bare-name fallback (a copied ambiguous filename already fzf-picks among its matches).
 
 ## Agent suggestions (opt-in)
 
@@ -212,7 +213,7 @@ already-tagged version.
 
 ![tokens tour: path, GitHub blob URL, commit SHA, PR reference, and a directory, all opened from the clipboard](demo/tokens-tour.gif)
 
-**The three in-overlay keys** - `d` (dirty-diff toggle), `e` (edit in `$EDITOR`), `o` (escalate to herdr-file-viewer):
+**The three in-overlay keys** - `D` (dirty-diff toggle), `e` (edit in `$EDITOR`), `o` (escalate to herdr-file-viewer):
 
 ![overlay keys tour: d toggles a git diff, e opens $EDITOR, o escalates into herdr-file-viewer](demo/overlay-keys-tour.gif)
 

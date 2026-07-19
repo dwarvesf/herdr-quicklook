@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+- Diff moved from `d` to `D` in the preview: lowercase `d` is less's own
+  half-page-down and the old binding shadowed basic scrolling.
+
 - A settled pick (hint key, mouse click, or the clipboard gate) now opens in
   herdr's 90% POPUP surface; the overlay is for choosing, the popup for
   reading. Plain left-click on a hinted token opens it (SGR mouse tracking
