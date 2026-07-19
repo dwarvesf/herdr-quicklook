@@ -50,21 +50,42 @@ teardown() {
   [ "$status" -ne 0 ]
 }
 
-@test "hint pane renders its rows as OSC-8 sentinel links with hint keys" {
+@test "hint pane overlays hint letters in place on the snapshot" {
   cd "$FIX/repo"
+  snap_file="$FIX/snap"
+  printf 'changed src/x.go:7 today\n' >"$snap_file"
+  printf 'see https://example.com/docs\n' >>"$snap_file"
   tokens_file="$FIX/tokens"
-  printf 'src/x.go:7\tpath  L7    src/x.go:7\n' >"$tokens_file"
-  printf 'https://example.com/docs\turl   L2    https://example.com/docs\n' >>"$tokens_file"
+  printf 'src/x.go:7\t1\tpath  src/x.go:7\n' >"$tokens_file"
+  printf 'https://example.com/docs\t2\turl   https://example.com/docs\n' >>"$tokens_file"
   export QUICKLOOK_HINT_TOKENS_FILE="$tokens_file"
+  export QUICKLOOK_HINT_SNAP_FILE="$snap_file"
   run bash "$HINT_PANE" </dev/null
   [ "$status" -eq 0 ]
   path_uri="$(quicklook_link_uri 'src/x.go:7')"
   url_uri="$(quicklook_link_uri 'https://example.com/docs')"
   [[ "$output" == *"$path_uri"* ]]
   [[ "$output" == *"$url_uri"* ]]
-  [[ "$output" == *"[a]"* ]]
-  [[ "$output" == *"[s]"* ]]
+  # In-place overlay: the hint letter replaces the token's first char inside
+  # the snapshot line, inverse-video; the surrounding text is untouched.
+  [[ "$output" == *"changed "* ]]
+  [[ "$output" == *$'\033[1;7ma\033[0m\033[4mrc/x.go:7\033[0m'* ]]
+  [[ "$output" == *$'\033[1;7ms\033[0m\033[4mttps://example.com/docs\033[0m'* ]]
   [[ "$output" == *"Ctrl+click"* ]]
+}
+
+@test "hint pane parks an unmatchable token in the extras list" {
+  cd "$FIX/repo"
+  snap_file="$FIX/snap"
+  printf 'nothing relevant here\n' >"$snap_file"
+  tokens_file="$FIX/tokens"
+  printf 'src/x.go:7\t1\tpath  src/x.go:7\n' >"$tokens_file"
+  export QUICKLOOK_HINT_TOKENS_FILE="$tokens_file"
+  export QUICKLOOK_HINT_SNAP_FILE="$snap_file"
+  run bash "$HINT_PANE" </dev/null
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"nothing relevant here"* ]]
+  [[ "$output" == *"path  src/x.go:7"* ]]
 }
 
 @test "virtual link action decodes the token before opening preview" {

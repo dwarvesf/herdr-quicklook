@@ -197,10 +197,11 @@ load_config() {
 }
 
 # Single-char hint keys for the native `hint` overlay, home-row first so the
-# most-relevant tokens (rendered top-down) get the easiest keys. 26 keys is the
-# ceiling; a pane with >26 openable tokens shows only the first 26 (ranked).
-# ponytail: 26-cap, add two-char hints only if a real pane ever overflows.
-QUICKLOOK_HINT_KEYS="asdfghjklqwertyuiopzxcvbnm"
+# most-relevant tokens (rendered top-down) get the easiest keys. `q` is
+# excluded: it is the cancel key, so a token labeled q could never be picked.
+# 25 keys is the ceiling; a busier pane shows only the first 25 (ranked).
+# ponytail: 25-cap, add two-char hints only if a real pane ever overflows.
+QUICKLOOK_HINT_KEYS="asdfghjklwertyuiopzxcvbnm"
 
 # hint_key_for_index <0-based-index> -> the hint char, rc 1 if out of range.
 hint_key_for_index() {

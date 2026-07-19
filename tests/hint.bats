@@ -17,11 +17,16 @@ setup() {
 
 @test "key <-> index round-trips across the whole range" {
   local i last=$(( ${#QUICKLOOK_HINT_KEYS} - 1 ))
-  for i in 0 1 9 25 "$last"; do
+  for i in 0 1 9 "$last"; do
     key="$(hint_key_for_index "$i")"
     [ -n "$key" ]
     [ "$(hint_index_for_key "$key")" = "$i" ]
   done
+}
+
+@test "the cancel key q is not a hint key" {
+  run hint_index_for_key "q"
+  [ "$status" -ne 0 ]
 }
 
 @test "index past the last key is rejected" {
