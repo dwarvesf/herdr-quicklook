@@ -196,6 +196,31 @@ load_config() {
   [ -n "$dir" ] && [ -f "$dir/.env" ] && . "$dir/.env"
 }
 
+# Single-char hint keys for the native `hint` overlay, home-row first so the
+# most-relevant tokens (rendered top-down) get the easiest keys. 26 keys is the
+# ceiling; a pane with >26 openable tokens shows only the first 26 (ranked).
+# ponytail: 26-cap, add two-char hints only if a real pane ever overflows.
+QUICKLOOK_HINT_KEYS="asdfghjklqwertyuiopzxcvbnm"
+
+# hint_key_for_index <0-based-index> -> the hint char, rc 1 if out of range.
+hint_key_for_index() {
+  local i="$1"
+  case "$i" in *[!0-9]*|'') return 1 ;; esac
+  [ "$i" -lt "${#QUICKLOOK_HINT_KEYS}" ] || return 1
+  printf '%s' "${QUICKLOOK_HINT_KEYS:$i:1}"
+}
+
+# hint_index_for_key <char> -> the 0-based index, rc 1 if not a hint key.
+hint_index_for_key() {
+  local k="$1" i=0
+  [ -n "$k" ] || return 1
+  while [ "$i" -lt "${#QUICKLOOK_HINT_KEYS}" ]; do
+    [ "${QUICKLOOK_HINT_KEYS:$i:1}" = "$k" ] && { printf '%s' "$i"; return 0; }
+    i=$((i + 1))
+  done
+  return 1
+}
+
 # pick_token [arg] -> the token to open, priority: $QUICKLOOK_TOKEN env (the
 # only channel that crosses `herdr plugin pane open --env`) > first argument
 # (natural CLI/agent shape) > clipboard (interactive default). Empty env = unset.

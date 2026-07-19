@@ -67,6 +67,19 @@ description = "List every openable token currently on screen (path, URL, SHA, #r
 command = ["bash", "scripts/pick.sh"]
 
 [[panes]]
+id = "hint-pane"
+title = "Hint"
+placement = "overlay"
+command = ["bash", "scripts/hint-pane.sh"]
+
+[[actions]]
+id = "hint"
+platforms = ["linux", "macos"]
+title = "Hint-pick anything openable on screen"
+description = "Overlay every openable token on screen with a one-key hint label; press the key to resolve + open it immediately. No fzf, no herdr-pluck."
+command = ["bash", "scripts/hint.sh"]
+
+[[panes]]
 id = "linkify-pane"
 title = "Quicklook Links"
 placement = "overlay"
