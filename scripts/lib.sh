@@ -475,6 +475,15 @@ resolve() {
           [ -f "$d$stripped" ] && { printf '%s' "$d$stripped"; return 0; }
         done
       done
+      # ... and each repo's house-standard worktrees (a gate-branch artifact
+      # reviewed from another repo's pane lives exactly there). Still one
+      # stat per candidate, still only on a full miss.
+      for r in ${QUICKLOOK_ROOTS:-}; do
+        [ -n "$r" ] && [ -d "$r" ] || continue
+        for d in "$r"/*/.claude/worktrees/*/; do
+          [ -f "$d$stripped" ] && { printf '%s' "$d$stripped"; return 0; }
+        done
+      done
       ;;
   esac
   return 1
@@ -843,6 +852,15 @@ _pick_resolve_local() {
       for r in ${QUICKLOOK_ROOTS:-}; do
         [ -n "$r" ] && [ -d "$r" ] || continue
         for d in "$r"/*/; do
+          [ -f "$d$stripped" ] && { printf '%s' "$d$stripped"; return 0; }
+        done
+      done
+      # ... and each repo's house-standard worktrees (a gate-branch artifact
+      # reviewed from another repo's pane lives exactly there). Still one
+      # stat per candidate, still only on a full miss.
+      for r in ${QUICKLOOK_ROOTS:-}; do
+        [ -n "$r" ] && [ -d "$r" ] || continue
+        for d in "$r"/*/.claude/worktrees/*/; do
           [ -f "$d$stripped" ] && { printf '%s' "$d$stripped"; return 0; }
         done
       done

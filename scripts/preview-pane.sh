@@ -91,7 +91,7 @@ else
 fi
 
 [ -z "${target:-}" ] && pause_close "quicklook: not a file I can find: $raw" \
-  "(tried as-is, \$PWD, this repo's worktrees, QUICKLOOK_ROOTS, repo filename search)"
+  "(tried as-is, \$PWD, this repo's worktrees, QUICKLOOK_ROOTS, the workspace sweep incl. other repos' worktrees, repo filename search)"
 
 record_open "$raw"
 
