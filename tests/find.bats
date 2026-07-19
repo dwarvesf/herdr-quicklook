@@ -109,6 +109,15 @@ SH
   grep -qx 'QUICKLOOK_FIND_QUERY=src/targ.md' <<<"$output"
 }
 
+@test "open-popup forwards the token into a 90% popup preview" {
+  export HERDR_BIN_PATH="$STUB/herdr"
+  run bash "$ROOT/scripts/open-popup.sh" 'src/target.md'
+  [ "$status" -eq 0 ]
+  grep -qx 'popup' <<<"$output"
+  grep -qx '90%' <<<"$output"
+  grep -qx 'QUICKLOOK_TOKEN=src/target.md' <<<"$output"
+}
+
 @test "manifest registers the find overlay and action" {
   python3 - "$ROOT/herdr-plugin.toml" <<'PY'
 import sys

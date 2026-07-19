@@ -68,7 +68,8 @@ if [ -n "$clip" ] && grep -qF -- "$clip" "$snap_file" 2>/dev/null; then
     if [ "${RESOLVED_MODE:-}" = "viewer" ]; then
       exec bash "$script_dir/open-in-viewer.sh" "$clip"
     fi
-    exec bash "$script_dir/open-preview.sh" "$clip"
+    # Determined token -> the roomy popup, same terminal as a hint pick.
+    QUICKLOOK_PREVIEW_CWD="$PWD" exec bash "$script_dir/open-popup.sh" "$clip"
   fi
   # Visible but unresolvable (a partial or mistyped path): drop into the
   # fzf finder pre-seeded with it, instead of a hint overlay that cannot

@@ -18,10 +18,14 @@
 # token whose text cannot be re-found on its snapshot line falls into a short
 # list under the snapshot.
 #
-# This overlay makes NO herdr RPC (a server RPC from a server-spawned overlay
-# pane deadlocks). Keys read from /dev/tty, not stdin. A hint keypress hands
-# the chosen raw token to preview-pane.sh via QUICKLOOK_TOKEN, exec'd IN THIS
-# SAME PANE. Esc/q cancels.
+# This overlay issues no BLOCKING herdr RPC (`pane read` from a
+# server-spawned overlay pane deadlocks; spawn-class requests like `plugin
+# pane open` ack immediately and are safe - the escalate flow set the
+# precedent). Keys AND mouse clicks read from /dev/tty (SGR mouse tracking:
+# plain left-click on a hinted token opens it, no Ctrl needed - inside this
+# overlay we own the TTY, which herdr's own Ctrl+click-only limit does not
+# reach). A pick opens the token in herdr's 90% POPUP surface (open-popup.sh)
+# - the overlay is for choosing, the popup is for reading. Esc/q cancels.
 set -u
 
 script_dir="$(cd "$(dirname "${BASH_SOURCE[0]:-$0}")" && pwd)"
@@ -38,7 +42,7 @@ fi
 tokens_file="${QUICKLOOK_HINT_TOKENS_FILE:-}"
 snap_file="${QUICKLOOK_HINT_SNAP_FILE:-}"
 cleanup() {
-  printf '\033[?25h\033[?7h'
+  printf '\033[?25h\033[?7h\033[?1000;1006l'
   [ -n "$tokens_file" ] && rm -f "$tokens_file" "$tokens_file.part" 2>/dev/null
   [ -n "$snap_file" ] && rm -f "$snap_file" 2>/dev/null
 }
@@ -65,6 +69,7 @@ H_OFF=$'\033[0m'
 OSC8_OFF=$'\033]8;;\033\\'
 
 NL=$'\n'
+MOUSE_ON=$'\033[?1000;1006h'
 # HOME + hide-cursor for the first paint; repaints overwrite in place and
 # clear only what is below (ESC[J), never the whole screen - a full ESC[2J
 # between paints is the blank-frame flicker pluck does not have. Autowrap is
@@ -148,6 +153,7 @@ styled_for() {
 # the first paint in place (no clear, no flicker).
 frame="${HOME}"
 extras=()
+span_row=(); span_c1=(); span_c2=(); span_idx=()
 
 # Rows with no line-no (not re-locatable on screen) join the extras list.
 i=0
@@ -207,6 +213,10 @@ while [ "$lidx" -lt "$total" ]; do
     fi
     styled_for "$idx"
     line="${line:0:$pos}${STYLED}${DIM}${line:$((pos + ${#tok}))}"
+    span_row+=($((lidx - offset + 1)))
+    span_c1+=($((pos + 1)))
+    span_c2+=($((pos + ${#tok})))
+    span_idx+=("$idx")
     prev_start=$pos
   done
   frame+="${DIM}${line}${RESET}"
@@ -216,36 +226,76 @@ done
 
 # Tokens whose text no longer matches their snapshot line (wrapped, trimmed
 # by the scanner, or the off-screen clipboard shape) still get pickable rows.
+screen_rows=$((total - offset))
 if [ "${#extras[@]}" -gt 0 ]; then
   for i in "${extras[@]}"; do
     styled_for "$i"
     frame+="${NL}  ${STYLED}  ${DIM}${labels[$i]}${RESET}"
+    screen_rows=$((screen_rows + 1))
+    span_row+=("$screen_rows")
+    span_c1+=(1)
+    span_c2+=(999)
+    span_idx+=("$i")
   done
 fi
-frame+="$EOD"
+frame+="${EOD}${MOUSE_ON}"
 
 printf '%s' "$frame"
 
+# open_pick <idx>: route the settled token. A directory goes to the real
+# navigable file-viewer; everything else opens in herdr's 90% POPUP surface
+# (open-popup.sh spawns it; the popup's preview-pane dispatches file/URL/
+# command itself). The overlay's job ends here.
+open_pick() {
+  local i="$1"
+  cleanup
+  if resolve_any_token "${tokens[$i]}" 2>/dev/null && [ "${RESOLVED_MODE:-}" = "viewer" ]; then
+    export QUICKLOOK_KEEP_CWD=1
+    exec bash "$script_dir/open-in-viewer.sh" "${tokens[$i]}"
+  fi
+  QUICKLOOK_PREVIEW_CWD="$PWD" exec bash "$script_dir/open-popup.sh" "${tokens[$i]}"
+}
+
+# hit_test <col> <row> -> token idx via $HIT, rc 1 on miss.
+hit_test() {
+  local x="$1" y="$2" k=0
+  while [ "$k" -lt "${#span_idx[@]}" ]; do
+    if [ "${span_row[$k]}" = "$y" ] && [ "$x" -ge "${span_c1[$k]}" ] && [ "$x" -le "${span_c2[$k]}" ]; then
+      HIT="${span_idx[$k]}"
+      return 0
+    fi
+    k=$((k + 1))
+  done
+  return 1
+}
+
 while IFS= read -rsn1 key <"$tty_in"; do
   case "$key" in
-    $'\e' | q | Q) cleanup; exit 0 ;;
+    q | Q) cleanup; exit 0 ;;
+    $'\e')
+      # Either a bare Esc (cancel) or the start of an SGR mouse report
+      # (ESC [ < b ; x ; y M/m). Peek with a short timeout.
+      if ! IFS= read -rsn1 -t 0.05 c1 <"$tty_in" 2>/dev/null; then cleanup; exit 0; fi
+      [ "$c1" = "[" ] || { cleanup; exit 0; }
+      IFS= read -rsn1 -t 0.05 c2 <"$tty_in" 2>/dev/null || continue
+      if [ "$c2" = "<" ]; then
+        seq=""
+        while IFS= read -rsn1 -t 0.05 ch <"$tty_in" 2>/dev/null; do
+          case "$ch" in M | m) break ;; *) seq+="$ch" ;; esac
+        done
+        # press events only; left button = 0
+        [ "$ch" = "M" ] || continue
+        IFS=';' read -r btn mx my <<<"$seq"
+        [ "$btn" = "0" ] || continue
+        hit_test "$mx" "$my" && open_pick "$HIT"
+      fi
+      # any other CSI (arrows etc): ignore
+      ;;
     '') continue ;;
     *)
       idx="$(hint_index_for_key "$key" 2>/dev/null)" || continue
       [ "$idx" -lt "${#tokens[@]}" ] || continue
-      cleanup
-      # Open by TYPE: a directory goes to the real navigable file-viewer
-      # (open-in-viewer's viewer arm can drive another pane over the socket);
-      # everything else - files to the popup pager, URLs to the browser -
-      # rides preview-pane's existing dispatch. QUICKLOOK_KEEP_CWD pins
-      # open-in-viewer to this pane's cwd (the origin repo) instead of the
-      # overlay's own pane cwd.
-      if resolve_any_token "${tokens[$idx]}" 2>/dev/null && [ "${RESOLVED_MODE:-}" = "viewer" ]; then
-        export QUICKLOOK_KEEP_CWD=1
-        exec bash "$script_dir/open-in-viewer.sh" "${tokens[$idx]}"
-      fi
-      export QUICKLOOK_TOKEN="${tokens[$idx]}"
-      exec bash "$script_dir/preview-pane.sh"
+      open_pick "$idx"
       ;;
   esac
 done
