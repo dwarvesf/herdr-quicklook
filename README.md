@@ -35,7 +35,7 @@ A few things that make it more than a pager:
 
 Resolution runs top-down: exact paths win before any fuzzy matching, and the first hit stops the chain. See [DESIGN.md](DESIGN.md) for how a token kind maps to its handler.
 
-## Renderers (v0.4)
+## Render types
 
 Once a token resolves to a local file, a second registry decides HOW to draw it: the closest-matching type gets a real renderer, and anything else lands on the always-on fallback below - the one guarantee that a preview never dumps a file's raw bytes into your terminal.
 
@@ -225,6 +225,18 @@ already-tagged version.
 
 ![pluck full flow: hint labels appear over visible tokens, pick one, and it opens with no extra keypress](demo/pluck-full-flow.gif)
 
+**Render types in the overlay** - once a token resolves to a local file, the render registry draws it by type. The images story - a png (inline `chafa` ANSI art), a gif, an svg (`rsvg-convert` -> `chafa`), a pdf (page-1 poster + extracted text):
+
+![render types, images tour: png via chafa, gif, svg via rsvg-convert then chafa, pdf page-1 poster plus extracted text](demo/render-images-tour.gif)
+
+The documents story - a markdown file (`glow`), a docx (`pandoc` -> `glow`), a Jupyter notebook (`pandoc`'s ipynb reader -> `glow`):
+
+![render types, documents tour: markdown via glow, docx via pandoc then glow, ipynb via pandoc then glow](demo/render-docs-tour.gif)
+
+The data-and-guard story - a csv (`qsv table`), minified json (`jq`), a sqlite schema (table list + DDL, never a row dump), and the negative control: an unknown/corrupt file that no renderer claims, landing on the always-on fallback (`file(1)` + a `hexyl` dump + an install hint):
+
+![render types, data and fallback tour: csv via qsv, json via jq, sqlite schema, and a corrupt file hitting the always-on file plus hexyl fallback guard with an install hint](demo/render-data-fallback.gif)
+
 Tapes for every recording live in [demo/](demo/), along with the landmines hit re-recording them on macOS.
 
 ## Requirements
@@ -252,10 +264,10 @@ v0.4 renders non-text files (markdown, images, pdf, archives, csv, json, office 
 
 | Tier | Tool | Powers | Without it |
 |---|---|---|---|
-| P1 | [`glow`](https://github.com/charmbracelet/glow) | markdown (`.md`/`.markdown`), and the rendered half of `.ipynb` (via `pandoc`'s markdown conversion) | falls back to the `file(1)`+`hexyl` guard with an install hint |
+| P1 | [`glow`](https://github.com/charmbracelet/glow) | markdown (`.md`/`.markdown`), and the rendered half of `.ipynb` (via `pandoc`'s markdown conversion) | falls back to the plain-text preview (markdown is text), not the guard |
 | P1 | [`chafa`](https://github.com/hpjansson/chafa) | still images (`png`/`jpg`/`jpeg`/`webp`/`bmp`) and animated gif (`.gif`, first-frame still if `--animate` degrades) | images/gif fall back to the `file(1)`+`hexyl` guard with an install hint |
 | P1 | [`hexyl`](https://github.com/sharkdp/hexyl) | the first-KB hexdump in the always-on unknown-binary guard | the guard still shows the `file(1)` type line + install hint, just without the hexdump |
-| P2 | `rsvg-convert` (Homebrew `librsvg`) | svg (`.svg`) -> png -> `chafa` | falls back to the `file(1)`+`hexyl` guard with an install hint |
+| P2 | `rsvg-convert` (Homebrew `librsvg`) | svg (`.svg`) -> png -> `chafa` | falls back to the plain-text preview (an svg is XML text), not the guard |
 | P2 | `pdftoppm` + `pdftotext` (Homebrew `poppler`) | pdf (`.pdf`): first-page image (`pdftoppm` -> `chafa`) plus extracted text | missing `pdftoppm` degrades to `pdftotext`-only text mode; missing both falls back to the `file(1)`+`hexyl` guard with an install hint |
 | P2 | [`qsv`](https://github.com/dathere/qsv) | csv/tsv (`.csv`/`.tsv`) as an aligned table | renders as plain text via `less`, then the guard if even that fails |
 | P2 | [`jq`](https://github.com/jqlang/jq) | minified json (`.json`), pretty-printed | renders as plain text via `less`, then the guard if even that fails |

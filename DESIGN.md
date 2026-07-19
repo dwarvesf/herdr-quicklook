@@ -130,6 +130,97 @@ needs a token-kind-specific interactive fallback, like `bare-name.sh`) is
 the one exception where the pane scripts' own `RESOLVED_MODE` case blocks
 may need a look, those bodies are the single place all four modes render.
 
+## Render registry
+
+The handler registry above resolves a token down to `RESOLVED_MODE=file` and
+a local path; the render registry sits one layer downstream and decides HOW
+to draw that path. It is the mechanism behind the [Render types](README.md#render-types)
+table: every file type in that table is one `scripts/renderers/<kind>.sh`.
+
+### The contract
+
+A file TYPE lives entirely in its own `scripts/renderers/<kind>.sh` and
+exports exactly two functions, the render-registry mirror of the
+handler-registry contract above:
+
+```sh
+match_render_<kind> <path>       # rc 0 iff this renderer owns the file's
+                                  # TYPE **and** its required external tool
+                                  # is on PATH. No resolution work, no side
+                                  # effects. May key on extension and/or
+                                  # `file --mime-type` / `file --mime-encoding`.
+render_<kind> <path> [line]      # DRIVES the pane (it owns the real TTY).
+                                  # Free to `exec less <file>`, pipe a
+                                  # formatter through render_command_in_pager,
+                                  # or run an inline renderer then pause.
+                                  # Returns the exit status (a renderer that
+                                  # `exec`s never actually returns). The
+                                  # optional [line] is the RESOLVED_LINE jump
+                                  # target; only text/markdown/pdf-text
+                                  # consume it.
+```
+
+`render_any <path> [line]` (in `scripts/lib.sh`) walks `RENDER_KINDS` in
+order and dispatches to the FIRST `match_render_<kind>` that accepts the
+path, returning that renderer's exit code. `preview-pane.sh`'s
+`RESOLVED_MODE=file` arm calls `render_any "$target" "$CLIP_LINE"` and exits
+with its return code - it owns no render logic of its own. `scripts/renderers/*.sh`
+is auto-sourced by a glob at source time, the SAME mechanism `scripts/handlers/*.sh`
+uses, so adding a kind never touches the sourcing mechanism, only
+`RENDER_KINDS` plus one new file.
+
+### `RENDER_KINDS` order rationale
+
+```sh
+RENDER_KINDS=(markdown image gif svg pdf archive csv json ipynb office media sqlite plist text fallback)
+```
+
+Most-specific kinds first, `text` second-to-last, `fallback` last - the
+same ordering discipline `HANDLER_KINDS` follows (a broad kind must never
+shadow a specific one). `fallback` always matches (`match_render_fallback`
+is an unconditional `return 0`), so it is the floor of the whole registry:
+the guarantee that nothing ever dumps raw bytes into the pane, even for a
+file no renderer has been written for yet.
+
+### The degrade-in-matcher rule
+
+A renderer decides its OWN degrade at match time, not mid-render:
+`match_render_<kind>` checks its required external tool is on PATH as part
+of matching, so a tool-absent decline is never discovered halfway through a
+render (a partially-drawn frame, a crash). Two different degrade floors
+follow from what the file type actually IS:
+
+- **A non-text kind's tool-absent decline reaches `fallback`.** `pdf.sh`,
+  `office.sh` (docx/xlsx), `media.sh`, `sqlite.sh` all wrap genuinely binary
+  formats; when their tool is missing they decline, no earlier kind claims a
+  binary file, and `text` also declines it (binary mime-encoding), so it
+  falls through to the guard - `file(1)` + a bounded `hexyl` dump + an
+  install hint.
+- **A textual kind's tool-absent decline reaches `text`, not `fallback`.**
+  `markdown.sh` (glow absent), `csv.sh` (qsv absent), `json.sh` (jq absent),
+  and `svg.sh` (rsvg-convert/chafa absent - an svg is XML) all wrap content
+  that `file --mime-encoding` reports as text, so when they decline, the
+  `text` renderer downstream claims it instead and pages the raw source via
+  `less` (bat-highlighted if installed). Getting this wrong is an easy
+  documentation bug: a "renderer degrades to the fallback guard" claim for
+  any of these four is factually wrong and worth fixing on sight (see the
+  README's Prerequisites table, corrected in the same pass that added this
+  section).
+
+### Adding a new renderer
+
+A new type is a single-file, additive change:
+
+1. `scripts/renderers/<kind>.sh` with `match_render_<kind>` / `render_<kind>`.
+2. One line: insert `<kind>` into `RENDER_KINDS` in `scripts/lib.sh`, most-specific-first,
+   before `text` and `fallback`.
+3. If the type has a recommended external tool, add an extension -> tool
+   mapping in `render_hint_for_ext` (`scripts/lib.sh`) so a genuinely-absent
+   tool surfaces an install hint when the file lands on `fallback`.
+
+No edits to `preview-pane.sh`, `open-in-viewer.sh`, or the sourcing glob -
+same additive shape as a new handler kind above.
+
 ## Virtual link transport
 
 Herdr plugin link handlers receive only resolved http(s) URLs. A plain path

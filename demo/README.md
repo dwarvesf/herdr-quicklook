@@ -1,7 +1,7 @@
 # demo/
 
-Six GIFs, recorded from a real herdr session with [vhs](https://github.com/charmbracelet/vhs),
-covering every main use case:
+GIFs recorded from a real herdr session with [vhs](https://github.com/charmbracelet/vhs),
+covering the token-opening flows and, since v0.4, the render registry itself:
 
 | GIF | Shows |
 |---|---|
@@ -11,6 +11,9 @@ covering every main use case:
 | `recents.gif` | `prefix+shift+v`: fzf-pick an older entry, proving the reopen bumps it back to the front |
 | `pluck-full-flow.gif` | The one-key pluck chain: herdr-pluck's hint overlay pops, pick a token, quick-look opens it immediately, no extra keypress |
 | `pick-anywhere.gif` | `prefix+v` on a busy pane (real commits, `ls`, a URL): `pluck-chain` reroutes into the native `pick` overlay (herdr-pluck not linked), the count header (`N on screen · A path · B url · ...`) is visible, a pick opens in the preview overlay. Plus the negative control: an empty pane and an empty clipboard yield the honest `quicklook: nothing openable on screen` instead of a crash or silent no-op |
+| `render-images-tour.gif` | The images story: a png (inline `chafa` ANSI art), a gif (the same `chafa` still-image path - see the landmine below), an svg (`rsvg-convert` -> `chafa`), a pdf (page-1 poster + extracted text) |
+| `render-docs-tour.gif` | The documents story: a markdown file (`glow`), a docx (`pandoc` -> `glow`), a Jupyter notebook (`pandoc`'s ipynb reader -> `glow`) |
+| `render-data-fallback.gif` | The data + guard story: a csv (`qsv table`), minified json (`jq`), a sqlite schema (table list + DDL, never a row dump), and the NEGATIVE CONTROL: a file no renderer claims, landing on the always-on guard (`file(1)` + a `hexyl` dump + an install hint) |
 
 ## Recording
 
@@ -36,6 +39,17 @@ gifsicle --colors 256 demo/clip-d.gif demo/clip-e.gif demo/clip-o.gif > demo/ove
 vhs demo/pick-anywhere-main.tape   # writes demo/pick-anywhere-main.gif
 vhs demo/pick-anywhere-empty.tape  # writes demo/pick-anywhere-empty.gif
 gifsicle --colors 256 demo/pick-anywhere-main.gif demo/pick-anywhere-empty.gif > demo/pick-anywhere.gif
+
+# The three v0.4 render-type tours record against invented fixtures in a
+# neutral /private/tmp scratch dir (never inside this checkout), generated
+# by a committed prep script - run it once before any of the three tapes:
+./demo/render-anything-fixtures.sh
+vhs demo/render-images-tour.tape     # writes demo/render-images-tour.gif
+vhs demo/render-docs-tour.tape       # writes demo/render-docs-tour.gif
+vhs demo/render-data-fallback.tape   # writes demo/render-data-fallback.gif
+gifsicle -O3 --colors 256 demo/render-images-tour.gif -o /tmp/i.gif && mv /tmp/i.gif demo/render-images-tour.gif
+gifsicle -O3 --colors 256 demo/render-docs-tour.gif -o /tmp/d.gif && mv /tmp/d.gif demo/render-docs-tour.gif
+gifsicle -O3 --colors 256 demo/render-data-fallback.gif -o /tmp/f.gif && mv /tmp/f.gif demo/render-data-fallback.gif
 ```
 
 `Output` paths in a `.tape` are relative to wherever `vhs` itself is invoked from, not
@@ -126,3 +140,59 @@ the tape file's own directory - always `cd` into the checkout first.
   openable on screen` on a cleared pane with an empty clipboard. No internal paths
   beyond the scratch clone's own `/private/tmp/demo/...` directory name; no
   client/Dwarves data.
+- **`herdr plugin pane open`'s own JSON acknowledgment pollutes the recording unless
+  redirected.** `scripts/open-preview.sh`, run directly (not through `herdr plugin
+  action invoke`), execs `herdr plugin pane open ...` with no output redirection of
+  its own - its RPC reply (a `plugin_pane_opened` JSON blob) prints straight into the
+  INVOKING pane, not the new overlay. The three render-tour tapes drive every open
+  through a tiny generated `open` wrapper (`render-anything-fixtures.sh`) that adds
+  `>/dev/null 2>&1`, same convention as the existing tapes' `>/dev/null 2>&1` on
+  `herdr plugin action invoke preview`.
+- **A bare relative filename does not resolve inside the overlay when the render is
+  driven by directly running `open-preview.sh`.** `open-preview.sh` derives the
+  overlay's cwd from `$HERDR_PLUGIN_CONTEXT_JSON`, which herdr populates only when
+  IT dispatches an action (a real keybinding, or `herdr plugin action invoke`) - a
+  plain shell invocation of the script never gets that context, so `resolve()`'s
+  first check (`[ -f "$p" ]`, cwd-relative) misses and the overlay reports
+  `quicklook: not a file I can find`. Fix: the same `open` wrapper resolves each
+  fixture to an ABSOLUTE path (`"$dir/$1"`) before handing it to
+  `open-preview.sh`, sidestepping the cwd question entirely.
+- **chafa 1.18.2's `--animate` flag requires `--animate=BOOL`, not a bare flag.**
+  `scripts/renderers/gif.sh`'s shipped invocation, `chafa --animate -d N -- <path>`,
+  mis-parses `-d` as `--animate`'s value on this chafa version (`chafa: Animate mode
+  must be one of [on, off]`, exit 2) and falls through to its own fallback, `chafa
+  --format symbols -- <path>` - with NO `--animate`/`-d` at all. On a genuinely
+  multi-frame gif, chafa defaults `--animate` to on and an unset `--duration` to
+  INFINITE for an animation, so that fallback call free-runs forever in a real TTY
+  (confirmed live over the herdr socket API - the overlay pane stayed open
+  unbounded, `ps` showed no dead process, only cursor-blink-level diffs between
+  polls; bare `q` and Ctrl+C delivered to the pane did nothing, since chafa itself
+  never reads stdin mid-render). `render-anything-fixtures.sh`'s `sample.gif` is
+  therefore a SINGLE-FRAME gif - the same `render_gif` code path, but nothing to
+  loop, so it closes on the normal "press any key" prompt like every other still
+  render. This is a real renderer-side finding worth a follow-up goal (out of scope
+  for the docs/demo sub-goal that found it).
+- **`render-images-tour.gif` verified**: one-dark theme throughout; png renders as
+  inline `chafa` ANSI art (a halftone-like render of the linkify.gif first frame,
+  matching its screenshot-of-text content); the gif beat renders the same still-image
+  path (see the chafa landmine above) with no error text; the svg renders as three
+  solid-color shapes (blue square, red circle, green triangle) via `rsvg-convert` ->
+  `chafa`; the pdf beat shows the page-1 poster then the extracted text, both
+  cleanly closing. No internal paths beyond the scratch dir's own
+  `/private/tmp/ql-demo-images/sample.*` names; no client/Dwarves data.
+- **`render-docs-tour.gif` verified**: one-dark theme throughout; the markdown
+  renders via `glow` (heading, bullet list, fenced code block all visible); the
+  docx renders the SAME content via `pandoc` -> `glow` (byte-identical prose,
+  proving the conversion round-trips); the ipynb renders its markdown cell + code
+  cell via `pandoc`'s ipynb reader -> `glow`. No internal paths beyond
+  `/private/tmp/ql-demo-docs/sample.*`; no client/Dwarves data.
+- **`render-data-fallback.gif` verified**: one-dark theme throughout; the csv
+  renders as an aligned `qsv table`; the json renders pretty-printed via `jq .`;
+  the sqlite beat shows the table list (`users`, `orders`) + `CREATE TABLE`
+  schema, never a row dump; the negative-control beat (`mystery.ipynb`, the first
+  800 bytes of `/bin/ls`, real Mach-O binary data wearing a `.ipynb` extension)
+  shows `file(1)`'s real type description, a colorized `hexyl` hexdump, and the
+  install hint `install jupyter/nbconvert for a richer preview of .ipynb files` -
+  the always-on guard catching a file no renderer will touch. No internal paths
+  beyond `/private/tmp/ql-demo-data/*`; every fixture is invented placeholder
+  content (fruit names); no client/Dwarves data.
