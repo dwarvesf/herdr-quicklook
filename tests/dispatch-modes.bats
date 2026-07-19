@@ -51,7 +51,7 @@ setup() {
 # shellcheck disable=SC2034
 match_zzz_test_only() {
   case "\$1" in
-    TEST_CMD_TOKEN|TEST_CMD_EMPTY_TOKEN|TEST_VIEWER_TOKEN) return 0 ;;
+    TEST_CMD_TOKEN|TEST_CMD_EMPTY_TOKEN|TEST_VIEWER_TOKEN|TEST_VIEWER_ROOT_TOKEN) return 0 ;;
     *) return 1 ;;
   esac
 }
@@ -70,6 +70,11 @@ handle_zzz_test_only() {
     TEST_VIEWER_TOKEN)
       RESOLVED_MODE="viewer"
       RESOLVED_TARGET="$FIX/myrepo/somedir"
+      return 0
+      ;;
+    TEST_VIEWER_ROOT_TOKEN)
+      RESOLVED_MODE="viewer"
+      RESOLVED_TARGET="$FIX/myrepo"
       return 0
       ;;
   esac
@@ -204,5 +209,28 @@ HERDR
   # real-dir.sh cases are covered in tests/handlers-dir.bats.
   grep -qF "pane send-keys {} f" "$hlog"
   grep -qF "pane send-text {} somedir" "$hlog"
+  rm -f "$hlog"
+}
+
+@test "open-in-viewer viewer mode: the repo root itself is inside its own tree (opens rooted, no goto)" {
+  cat > "$STUB/jq" <<'JQ'
+#!/usr/bin/env bash
+printf '{}'
+JQ
+  chmod +x "$STUB/jq"
+  local hlog
+  hlog="$(mktemp)"
+  cat > "$STUB/herdr" <<HERDR
+#!/usr/bin/env bash
+printf '%s\n' "\$*" >> "$hlog"
+exit 0
+HERDR
+  chmod +x "$STUB/herdr"
+  export QUICKLOOK_TOKEN="TEST_VIEWER_ROOT_TOKEN"
+  run bash "$VIEWER"
+  [ "$status" -eq 0 ]
+  [[ "$output" != *"outside this repo's tree"* ]]
+  # rel is empty for the root: the viewer opens rooted there, no goto keys.
+  ! grep -qF "pane send-text" "$hlog"
   rm -f "$hlog"
 }

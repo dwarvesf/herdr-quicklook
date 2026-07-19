@@ -442,6 +442,13 @@ render_command_in_pager() {
 # a target (caller does its own fallback, if any).
 resolve_any_token() {
   local raw="$1" kind
+  # A copied shell path routinely arrives tilde-form; no handler expands it,
+  # so expand once here (never inside quotes on screen, always the user's own
+  # home - a remote host's ~ is out of scope by design).
+  case "$raw" in
+    '~/'*) raw="$HOME/${raw#'~/'}" ;;
+    '~') raw="$HOME" ;;
+  esac
   RESOLVED_TARGET=""
   RESOLVED_LINE=""
   RESOLVED_MODE=""

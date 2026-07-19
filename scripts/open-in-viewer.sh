@@ -90,13 +90,16 @@ if resolve_any_token "$raw"; then
 fi
 [ -z "${target:-}" ] && { notify "not found: $raw"; exit 0; }
 
-# The viewer roots at the focused pane's repo; outside targets can't show there.
+# The viewer roots at the focused pane's repo; outside targets can't show
+# there. The root itself is inside its own tree (rel stays empty: the viewer
+# opens rooted there, no goto needed).
 root="$(git rev-parse --show-toplevel 2>/dev/null)"
-if [ -z "$root" ] || [[ "$target" != "$root"/* ]]; then
+if [ -z "$root" ] || { [ "$target" != "$root" ] && [[ "$target" != "$root"/* ]]; }; then
   notify "outside this repo's tree: use the preview overlay instead"
   exit 0
 fi
 rel="${target#"$root"/}"
+[ "$rel" = "$target" ] && rel=""
 
 # $rel is typed into the file-viewer TUI via send-text; a control byte in the
 # filename (e.g. an embedded newline in a maliciously-named file) would inject
@@ -130,9 +133,13 @@ else
   "$herdr_bin" pane zoom "$pid" --off >/dev/null 2>&1
 fi
 
-"$herdr_bin" pane send-keys "$pid" f >/dev/null 2>&1
-"$herdr_bin" pane send-text "$pid" "$rel" >/dev/null 2>&1
-"$herdr_bin" pane send-keys "$pid" Enter >/dev/null 2>&1
+# rel empty = the target IS the repo root; the viewer already opened rooted
+# there, so there is nothing to goto.
+if [ -n "$rel" ]; then
+  "$herdr_bin" pane send-keys "$pid" f >/dev/null 2>&1
+  "$herdr_bin" pane send-text "$pid" "$rel" >/dev/null 2>&1
+  "$herdr_bin" pane send-keys "$pid" Enter >/dev/null 2>&1
+fi
 
 if [ -n "$CLIP_LINE" ]; then
   sleep 0.2

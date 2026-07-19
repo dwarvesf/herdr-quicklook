@@ -47,6 +47,18 @@ fi
 
 clip="$(clip_read)"
 
+# Clipboard-first, IMMEDIATE: the user who just selected+copied the exact
+# token on screen wants it open, not a picker. If the clipboard resolves,
+# route it by type right now - directory to the real file-viewer, everything
+# else (file/URL/SHA) through the preview pane - and never open the overlay.
+# An unresolvable/stale clipboard falls through to the hint flow.
+if [ -n "$clip" ] && resolve_any_token "$clip" >/dev/null 2>&1; then
+  if [ "${RESOLVED_MODE:-}" = "viewer" ]; then
+    exec bash "$script_dir/open-in-viewer.sh" "$clip"
+  fi
+  exec bash "$script_dir/open-preview.sh" "$clip"
+fi
+
 raw_file="$(mktemp "${TMPDIR:-/tmp}/quicklook-hint-raw.XXXXXX")"
 snap_file="$(mktemp "${TMPDIR:-/tmp}/quicklook-hint-snap.XXXXXX")"
 tokens_file="${TMPDIR:-/tmp}/quicklook-hint-tok.$$"
@@ -70,18 +82,12 @@ _pick_strip_ansi <"$raw_file" >"$snap_file"
   fi
   [ -n "${QUICKLOOK_HINT_NAMES:-}" ] || export QUICKLOOK_SCAN_SKIP_NAMES=1
   {
-    clip_raw=""
-    if [ -n "$clip" ] && resolve_any_token "$clip" >/dev/null 2>&1; then
-      clip_raw="$clip"
-      printf '%s\t\t%s\t%s\n' "$clip" "$(quicklook_link_uri "$clip" || true)" "clipboard: $clip"
-    fi
     n=0
     while IFS=$'\t' read -r raw kind line_no; do
       [ -n "$raw" ] || continue
-      [ -n "$clip_raw" ] && [ "$raw" = "$clip_raw" ] && continue
       printf '%s\t%s\t%s\t%-5s %s\n' "$raw" "$line_no" "$(quicklook_link_uri "$raw" || true)" "$kind" "$raw"
       n=$((n + 1))
-      [ "$n" -ge $(( ${#QUICKLOOK_HINT_KEYS} - 1 )) ] && break
+      [ "$n" -ge "${#QUICKLOOK_HINT_KEYS}" ] && break
     done < <(pick_scan_text <"$raw_file")
   } >"$tokens_file.part"
   mv -f "$tokens_file.part" "$tokens_file"

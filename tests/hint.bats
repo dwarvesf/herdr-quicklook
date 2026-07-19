@@ -29,6 +29,15 @@ setup() {
   [ "$status" -ne 0 ]
 }
 
+@test "resolve_any_token expands a tilde path to the user's home" {
+  FIX="$(mktemp -d)"
+  printf 'x\n' >"$FIX/tilde-fixture.md"
+  HOME="$FIX" resolve_any_token '~/tilde-fixture.md'
+  [ "$RESOLVED_MODE" != "browser" ]
+  [[ "$RESOLVED_TARGET" == *"/tilde-fixture.md" ]]
+  rm -rf "$FIX"
+}
+
 @test "index past the last key is rejected" {
   run hint_key_for_index "${#QUICKLOOK_HINT_KEYS}"
   [ "$status" -ne 0 ]
