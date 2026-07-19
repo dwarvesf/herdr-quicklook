@@ -85,6 +85,68 @@
 # from before this refactor. See DECISIONS.md.
 # -----------------------------------------------------------------------
 
+# -----------------------------------------------------------------------
+# Render-registry contract (v0.4, SG-01)
+#
+# The handler registry above resolves a token down to RESOLVED_MODE=file +
+# a local path; the render registry sits one layer downstream and decides
+# HOW to draw that path. A file TYPE lives in its own
+# scripts/renderers/<kind>.sh and exports two functions:
+#
+#   match_render_<kind> <path>       -> rc 0 iff this renderer owns the
+#                                        file's TYPE **and** its required
+#                                        external tool is on PATH. No
+#                                        resolution work, no side effects.
+#                                        May key on extension and/or
+#                                        `file --mime-type` /
+#                                        `file --mime-encoding`.
+#   render_<kind> <path> [line]      -> DRIVES the pane (it owns the real
+#                                        TTY). Free to `exec less <file>`,
+#                                        pipe a formatter through
+#                                        render_command_in_pager, or run an
+#                                        inline renderer then pause. Returns
+#                                        the exit status (a renderer that
+#                                        `exec`s never actually returns -
+#                                        the process image is replaced, same
+#                                        as preview-pane.sh's own pre-SG-01
+#                                        `exec less`). The optional [line]
+#                                        is the RESOLVED_LINE jump target;
+#                                        only text/markdown/pdf-text consume
+#                                        it.
+#
+# render_any <path> [line] (below) walks RENDER_KINDS in order and
+# dispatches to the FIRST match_render_<kind> that accepts the path,
+# returning that renderer's rc. Order matters, most-specific first, `text`
+# second-to-last, `fallback` last as the always-0 catch-all (never let a
+# broad kind shadow a specific one). scripts/renderers/*.sh is
+# auto-sourced by a glob at source time (below), the SAME mechanism as
+# scripts/handlers/*.sh above - adding a kind never edits the sourcing
+# mechanism, only RENDER_KINDS + one new file.
+#
+# preview-pane.sh's RESOLVED_MODE=file arm calls
+# `render_any "$target" "$CLIP_LINE"` and exits with its return code; it no
+# longer owns any render logic itself (that used to be the inline
+# lesskey/bat/`exec less` tail - it now lives in scripts/renderers/text.sh
+# verbatim, byte-for-byte behavior parity: o/d/e overlay keys, +LINE jump,
+# bat LESSOPEN highlighting, plain `less -N` when bat is absent).
+# open-in-viewer.sh is untouched - it drives the external herdr-file-viewer
+# pane, never an inline render.
+#
+# The FULL v0.4 type roster is pre-registered now (this sub-goal's whole
+# job - it is what makes every later renderer a single new-file edit):
+# markdown, image, gif, svg, pdf, archive, csv, json, ipynb, office, media,
+# sqlite, plist, text, fallback. Every kind except text/fallback ships as a
+# declining stub today (match_render_<kind> always returns 1, render_<kind>
+# is an unreachable no-op) - Wave 2/3 fills each one in as a single-file
+# change, RENDER_KINDS/render_any/the sourcing glob/preview-pane.sh stay
+# untouched.
+#
+# RENDER_HINTS (see render_hint_for_ext below) is an extension -> recommended
+# external-tool map for the full planned roster, consulted ONLY by the
+# fallback renderer (a "you might want X" hint when nothing else claimed the
+# file); no other renderer touches it.
+# -----------------------------------------------------------------------
+
 herdr_bin="${HERDR_BIN_PATH:-herdr}"
 
 clip_read() {
@@ -413,6 +475,12 @@ resolve() {
 # comment above.
 HANDLER_KINDS=(github vcs url dir path)
 
+# Render-registry order (first match wins): see the render-registry contract
+# comment at the top of this file. Most-specific kinds first; `text` second-
+# to-last, `fallback` last (the always-0 catch-all must not shadow a
+# specific kind - same rule HANDLER_KINDS's own ordering follows above).
+RENDER_KINDS=(markdown image gif svg pdf archive csv json ipynb office media sqlite plist text fallback)
+
 # LIB_DIR: this file's own directory (== scripts/), kept around (not
 # unset) so render_command_in_pager below can find ../lesskey the same way
 # the pane scripts locate it from their own script_dir.
@@ -429,6 +497,14 @@ for _herdr_handler in "$LIB_DIR"/handlers/*.sh; do
   [ -f "$_herdr_handler" ] && . "$_herdr_handler"
 done
 unset _herdr_handler
+
+# Auto-source every render-registry kind, same glob-at-source-time mechanism
+# as the handlers loop above - adding a kind never edits this loop.
+for _herdr_renderer in "$LIB_DIR"/renderers/*.sh; do
+  # shellcheck disable=SC1090
+  [ -f "$_herdr_renderer" ] && . "$_herdr_renderer"
+done
+unset _herdr_renderer
 
 # render_command_in_pager <argv...> -> runs argv, pages its combined
 # stdout+stderr through less (color preserved via -R, so a command that
@@ -469,6 +545,54 @@ resolve_any_token() {
     fi
   done
   return 1
+}
+
+# render_any <path> [line] -> see the render-registry contract at the top of
+# this file. Walks RENDER_KINDS in order and dispatches to the first
+# match_render_<kind> that claims <path>, running that renderer's
+# render_<kind> and returning its exit status. `fallback` is always last and
+# always matches, so this only returns 1 if RENDER_KINDS itself was emptied
+# out from under it (never true in shipped code) - every real call ends in
+# some renderer driving the pane.
+render_any() {
+  local path="$1" line="${2:-}" kind
+  for kind in "${RENDER_KINDS[@]}"; do
+    if "match_render_$kind" "$path"; then
+      "render_$kind" "$path" "$line"
+      return $?
+    fi
+  done
+  return 1
+}
+
+# render_hint_for_ext <ext> -> prints the recommended external tool for a
+# file extension on stdout, rc 1 if the extension has no hint. See the
+# RENDER_HINTS note in the render-registry contract above: consulted only by
+# scripts/renderers/fallback.sh. A plain case statement, not a bash
+# associative array (`declare -A`/`local -A` is bash 4+; macOS ships bash
+# 3.2 at /bin/bash - see the BASH 3.2 REWRITE note further down this file
+# for the same constraint elsewhere). <ext> is matched case-insensitively
+# via `tr` (a single call per fallback render, not a per-span hot loop, so
+# this is not the fork-avoidance concern that note is about).
+render_hint_for_ext() {
+  local ext
+  ext="$(printf '%s' "${1#.}" | tr '[:upper:]' '[:lower:]')"
+  case "$ext" in
+    md) printf 'glow' ;;
+    png | jpg | jpeg | webp | bmp) printf 'chafa' ;;
+    gif) printf 'chafa' ;;
+    svg) printf 'rsvg-convert' ;;
+    pdf) printf 'poppler' ;;
+    zip | tar | tgz | jar) printf '(builtin)' ;;
+    csv | tsv) printf 'qsv' ;;
+    json) printf 'jq' ;;
+    ipynb) printf 'jupyter/nbconvert' ;;
+    docx | xlsx) printf 'pandoc' ;;
+    mp4 | mov | mp3) printf 'ffmpeg' ;;
+    sqlite | db) printf 'sqlite3' ;;
+    plist) printf '(builtin)' ;;
+    *) return 1 ;;
+  esac
 }
 
 # -----------------------------------------------------------------------
