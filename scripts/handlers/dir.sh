@@ -28,6 +28,19 @@ _dir_candidates() {
   for r in ${QUICKLOOK_ROOTS:-}; do
     [ -n "$r" ] && printf '%s\n' "$r/$p"
   done
+  # Workspace sweep, mirroring resolve()'s last rung (the walks must stay
+  # aligned so a file at an earlier rung always beats a dir at a later one).
+  local stripped="${p#./}" d
+  case "$stripped" in
+    */*)
+      for r in ${QUICKLOOK_ROOTS:-}; do
+        [ -n "$r" ] && [ -d "$r" ] || continue
+        for d in "$r"/*/; do
+          printf '%s\n' "$d$stripped"
+        done
+      done
+      ;;
+  esac
 }
 
 # _resolve_dir <raw> -> absolute directory path on stdout, rc 0. rc 1 when no

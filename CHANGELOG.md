@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+- Workspace sweep: a relative path referenced from another repo's pane
+  resolves by probing each root's first-level children (root/<repo>/<path>),
+  files and directories alike, as the last resolution rung.
+
 - Five new render types (P2 pack): svg (`.svg`, `rsvg-convert` -> a temp png
   -> the same inline chafa render as still images), pdf (`.pdf`, a page-1
   poster via `pdftoppm`+chafa plus extracted text via `pdftotext`, paged
