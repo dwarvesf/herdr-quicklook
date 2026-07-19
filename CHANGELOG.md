@@ -13,6 +13,8 @@
   preview pane, paged; degrades to the plain-text preview when `glow` is
   absent (a markdown file is still perfectly readable as text).
 
+- The preview overlay renders still images (`png`/`jpg`/`jpeg`/`webp`/`bmp`) and animated gifs inline via `chafa`: ANSI symbols mode by default (works in any terminal), with a kitty-graphics passthrough enhancement when the terminal signals support. Gifs animate via `chafa --animate` (bounded duration, never hangs the pane), falling back to a first-frame still when animation is unavailable. Both degrade to the fallback guard above (never a raw-byte dump) when `chafa` is absent.
+
 - Bare domains (hermes.d.foundation, herdr.dev) classify as urls and open
   the browser with an https scheme, gated on a TLD allowlist so file
   extensions (.md, .go, .sh) never misclassify.
