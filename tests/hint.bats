@@ -29,6 +29,28 @@ setup() {
   [ "$status" -ne 0 ]
 }
 
+@test "workspace sweep: a relative path from ANOTHER repo resolves via roots" {
+  FIX="$(cd "$(mktemp -d)" && pwd -P)"
+  mkdir -p "$FIX/root/repoA/sub" "$FIX/elsewhere"
+  printf 'x\n' >"$FIX/root/repoA/sub/deep-file.md"
+  cd "$FIX/elsewhere"
+  QUICKLOOK_ROOTS="$FIX/root" resolve_any_token './sub/deep-file.md'
+  [ "$RESOLVED_TARGET" = "$FIX/root/repoA/sub/deep-file.md" ]
+  QUICKLOOK_ROOTS="$FIX/root" resolve_any_token 'sub/deep-file.md'
+  [ "$RESOLVED_TARGET" = "$FIX/root/repoA/sub/deep-file.md" ]
+  cd /; rm -rf "$FIX"
+}
+
+@test "workspace sweep: a slash-less token never sweeps (no false hits)" {
+  FIX="$(cd "$(mktemp -d)" && pwd -P)"
+  mkdir -p "$FIX/root/repoA" "$FIX/elsewhere"
+  printf 'x\n' >"$FIX/root/repoA/lonely.md"
+  cd "$FIX/elsewhere"
+  run bash -c ". '$BATS_TEST_DIRNAME/../scripts/lib.sh'; QUICKLOOK_ROOTS='$FIX/root' resolve_any_token 'lonely.md'"
+  [ "$status" -ne 0 ]
+  cd /; rm -rf "$FIX"
+}
+
 @test "resolve_any_token expands a tilde path to the user's home" {
   FIX="$(mktemp -d)"
   printf 'x\n' >"$FIX/tilde-fixture.md"

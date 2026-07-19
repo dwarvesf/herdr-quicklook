@@ -460,6 +460,23 @@ resolve() {
   for r in ${QUICKLOOK_ROOTS:-}; do
     [ -n "$r" ] && [ -f "$r/$p" ] && { printf '%s' "$r/$p"; return 0; }
   done
+  # Workspace sweep, the last rung: a RELATIVE path pasted from another
+  # repo's session (./scripts/release.sh while standing in a different
+  # repo) resolves by probing each first-level child of every root
+  # (root/<repo>/<path>). One stat per child, and only after every
+  # earlier rung failed, so the common case never pays for it. Leading
+  # ./ is stripped for the join; absolute tokens never reach here.
+  local stripped="${p#./}" d
+  case "$stripped" in
+    */*)
+      for r in ${QUICKLOOK_ROOTS:-}; do
+        [ -n "$r" ] && [ -d "$r" ] || continue
+        for d in "$r"/*/; do
+          [ -f "$d$stripped" ] && { printf '%s' "$d$stripped"; return 0; }
+        done
+      done
+      ;;
+  esac
   return 1
 }
 
@@ -814,6 +831,23 @@ _pick_resolve_local() {
   for r in ${QUICKLOOK_ROOTS:-}; do
     [ -n "$r" ] && [ -f "$r/$p" ] && { printf '%s' "$r/$p"; return 0; }
   done
+  # Workspace sweep, the last rung: a RELATIVE path pasted from another
+  # repo's session (./scripts/release.sh while standing in a different
+  # repo) resolves by probing each first-level child of every root
+  # (root/<repo>/<path>). One stat per child, and only after every
+  # earlier rung failed, so the common case never pays for it. Leading
+  # ./ is stripped for the join; absolute tokens never reach here.
+  local stripped="${p#./}" d
+  case "$stripped" in
+    */*)
+      for r in ${QUICKLOOK_ROOTS:-}; do
+        [ -n "$r" ] && [ -d "$r" ] || continue
+        for d in "$r"/*/; do
+          [ -f "$d$stripped" ] && { printf '%s' "$d$stripped"; return 0; }
+        done
+      done
+      ;;
+  esac
   return 1
 }
 
