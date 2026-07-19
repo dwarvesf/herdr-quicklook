@@ -118,7 +118,6 @@ set -- plugin pane open \
   --plugin herdr-quicklook \
   --entrypoint hint-pane \
   --placement overlay \
-  --width 90% --height 90% \
   --focus \
   --env "QUICKLOOK_HINT_TOKENS_FILE=$tokens_file" \
   --env "QUICKLOOK_HINT_SNAP_FILE=$snap_file"
