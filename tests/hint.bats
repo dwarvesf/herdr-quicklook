@@ -41,6 +41,16 @@ setup() {
   cd /; rm -rf "$FIX"
 }
 
+@test "workspace sweep: reaches another repo's house-standard worktrees" {
+  FIX="$(cd "$(mktemp -d)" && pwd -P)"
+  mkdir -p "$FIX/root/repoA/.claude/worktrees/wt1/demo" "$FIX/elsewhere"
+  printf 'x\n' >"$FIX/root/repoA/.claude/worktrees/wt1/demo/artifact.gif"
+  cd "$FIX/elsewhere"
+  QUICKLOOK_ROOTS="$FIX/root" resolve_any_token 'demo/artifact.gif'
+  [ "$RESOLVED_TARGET" = "$FIX/root/repoA/.claude/worktrees/wt1/demo/artifact.gif" ]
+  cd /; rm -rf "$FIX"
+}
+
 @test "workspace sweep: a slash-less token never sweeps (no false hits)" {
   FIX="$(cd "$(mktemp -d)" && pwd -P)"
   mkdir -p "$FIX/root/repoA" "$FIX/elsewhere"

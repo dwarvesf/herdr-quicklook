@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+- The workspace sweep also probes each repo's house-standard worktrees
+  (.claude/worktrees/*), so a gate-branch artifact opens from any pane; the
+  not-found message now names every rung.
+
 - Diff moved from `d` to `D` in the preview: lowercase `d` is less's own
   half-page-down and the old binding shadowed basic scrolling.
 
