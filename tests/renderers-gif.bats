@@ -39,7 +39,7 @@ _stub_chafa_animate_unavailable() {
   cat > "$STUB/chafa" <<'SH'
 #!/usr/bin/env bash
 for a in "$@"; do
-  [ "$a" = "--animate" ] && exit 1
+  case "$a" in --animate=on) exit 1 ;; esac
 done
 printf '%s\n' "$@" > "$CHAFA_ARGV_FILE"
 exit 0
@@ -109,8 +109,7 @@ SH
   run bash -c ". '$LIB'; render_gif '$FIX/t.gif' <<<'x'"
   [ "$status" -eq 0 ]
   [ -f "$FIX/chafa.argv" ]
-  grep -qx -- '--animate' "$FIX/chafa.argv"
-  grep -qx -- '-d' "$FIX/chafa.argv"
+  grep -qx -- '--animate=on' "$FIX/chafa.argv"
   grep -qx -- "$FIX/t.gif" "$FIX/chafa.argv"
 }
 
@@ -124,5 +123,6 @@ SH
   [ -f "$FIX/chafa.argv" ]
   grep -qx -- '--format' "$FIX/chafa.argv"
   grep -qx -- 'symbols' "$FIX/chafa.argv"
-  ! grep -qx -- '--animate' "$FIX/chafa.argv"
+  grep -qx -- '--animate=off' "$FIX/chafa.argv"
+  ! grep -qx -- '--animate=on' "$FIX/chafa.argv"
 }
