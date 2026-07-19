@@ -1,13 +1,16 @@
 #!/usr/bin/env bash
 # Pane `hint-pane`: the native hint picker overlay (real TTY). Opened by the
-# `hint` action (scripts/hint.sh), which has no TTY of its own.
+# `hint` action (scripts/hint.sh), which already scanned the origin pane and
+# wrote the ordered "raw<TAB>label" list to $QUICKLOOK_HINT_TOKENS_FILE.
 #
-# Lists every openable token in the ORIGIN pane (forwarded as
-# QUICKLOOK_HINT_ORIGIN_PANE, captured before this overlay stole focus - see
-# scripts/pick.sh) with a one-key hint label. Press the key and the token is
-# handed to preview-pane.sh via QUICKLOOK_TOKEN and `exec`'d IN THIS SAME PANE,
-# so it resolves + renders + records exactly like every other quicklook open.
-# No fzf and no herdr-pluck: a single keypress opens, or Esc/q cancels.
+# This overlay makes NO herdr RPC on purpose: a server RPC from a server-spawned
+# overlay pane deadlocks (see hint.sh). It only reads the token file, renders a
+# one-key hint label per token, and on a keypress hands the chosen raw token to
+# preview-pane.sh via QUICKLOOK_TOKEN, `exec`'d IN THIS SAME PANE, so it resolves
+# + renders + records exactly like every other quicklook open. Esc/q cancels.
+#
+# Keys read from /dev/tty, not stdin: an overlay pane's stdin is not the
+# interactive terminal (fzf-based panes read /dev/tty for the same reason).
 set -u
 
 script_dir="$(cd "$(dirname "${BASH_SOURCE[0]:-$0}")" && pwd)"
@@ -16,35 +19,34 @@ script_dir="$(cd "$(dirname "${BASH_SOURCE[0]:-$0}")" && pwd)"
 
 load_config
 
-# Wait for one explicit key, then close. Used for the empty and error states so
-# the overlay never flash-closes on a stray buffered keystroke.
+# Enter the origin repo so the open step's resolve() sees it as $PWD.
+if [ -n "${QUICKLOOK_HINT_CWD:-}" ] && [ -d "$QUICKLOOK_HINT_CWD" ]; then
+  cd "$QUICKLOOK_HINT_CWD" || true
+fi
+
+tokens_file="${QUICKLOOK_HINT_TOKENS_FILE:-}"
+cleanup() { [ -n "$tokens_file" ] && rm -f "$tokens_file" 2>/dev/null; }
+
+tty_in=/dev/tty
+[ -r "$tty_in" ] || tty_in=/dev/stdin
+
 wait_close() {
   printf '%s\n\n(press any key to close)' "$*"
-  read -rsn1 _ 2>/dev/null || sleep 2
+  read -rsn1 _ <"$tty_in" 2>/dev/null || sleep 3
+  cleanup
   exit 0
 }
 
-origin="${QUICKLOOK_HINT_ORIGIN_PANE:-}"
-clip="${QUICKLOOK_HINT_CLIP:-}"
-
-# Ranked token list. Row 0 is the clipboard token when it resolves (so the
-# easiest hint opens what you just copied); the rest are the on-screen
-# candidates with the clipboard token deduped out.
 tokens=()
 labels=()
-
-if [ -n "$clip" ] && resolve_any_token "$clip" >/dev/null 2>&1; then
-  tokens+=("$clip")
-  labels+=("clipboard  $clip")
+if [ -n "$tokens_file" ] && [ -f "$tokens_file" ]; then
+  while IFS=$'\t' read -r raw label; do
+    [ -n "$raw" ] || continue
+    tokens+=("$raw")
+    labels+=("$label")
+    [ "${#tokens[@]}" -ge "${#QUICKLOOK_HINT_KEYS}" ] && break
+  done <"$tokens_file"
 fi
-
-while IFS=$'\t' read -r raw kind line_no; do
-  [ -n "$raw" ] || continue
-  [ "${#tokens[@]}" -gt 0 ] && [ "$raw" = "${tokens[0]}" ] && [ "${labels[0]}" = "clipboard  $raw" ] && continue
-  tokens+=("$raw")
-  labels+=("$(printf '%-5s L%-4s %s' "$kind" "$line_no" "$raw")")
-  [ "${#tokens[@]}" -ge "${#QUICKLOOK_HINT_KEYS}" ] && break
-done < <(pick_acquire "$origin")
 
 [ "${#tokens[@]}" -eq 0 ] && wait_close "quicklook: nothing openable on screen"
 
@@ -60,15 +62,17 @@ render() {
 }
 
 render
-while IFS= read -rsn1 key; do
+while IFS= read -rsn1 key <"$tty_in"; do
   case "$key" in
-    $'\e' | q | Q) exit 0 ;;
+    $'\e' | q | Q) cleanup; exit 0 ;;
     '') continue ;;
     *)
-      idx="$(hint_index_for_key "$key" 2>/dev/null)" || { continue; }
+      idx="$(hint_index_for_key "$key" 2>/dev/null)" || continue
       [ "$idx" -lt "${#tokens[@]}" ] || continue
       export QUICKLOOK_TOKEN="${tokens[$idx]}"
+      cleanup
       exec bash "$script_dir/preview-pane.sh"
       ;;
   esac
 done
+cleanup
