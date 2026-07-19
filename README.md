@@ -218,6 +218,33 @@ Everything else is optional, and the plugin degrades instead of failing:
 | [`fzf`](https://github.com/junegunn/fzf) | picking among multiple bare-filename matches in the preview flow, and the `recents` list | single bare-filename matches still open, multiple are listed so you can copy an exact path; `recents` reopens the most recent entry directly |
 | [herdr-file-viewer](https://github.com/smarzban/herdr-file-viewer) plugin | the `open-in-viewer` action | the action falls back to the preview overlay automatically |
 
+## Prerequisites
+
+v0.4 renders non-text files (markdown, images, pdf, archives, csv, json, office docs, media, sqlite/plist, and more) in the preview overlay instead of paging raw bytes. Every renderer beyond the hard requirements above is optional and degrades gracefully: a missing tool never crashes the overlay, it falls back to a plainer render (or, at the floor, the always-on `file(1)` + `hexyl` guard) with a one-line install hint.
+
+```sh
+./scripts/install-renderers.sh            # preview only, installs nothing (the default)
+./scripts/install-renderers.sh --p1 --apply   # actually install just the P1 tier
+```
+
+`--dry-run` is the default (a bare invocation is identical); it previews the brew formula for each tier and skips anything already on `PATH`, touching nothing. `--apply` is the explicit opt-in that runs `brew install`. `--p1`/`--p2`/`--p3` are repeatable and select a tier; with none given, every tier is previewed/installed. No Homebrew? The script detects that and prints the manual (`apt`/`cargo`) fallback line as a comment instead of failing.
+
+| Tier | Tool | Powers | Without it |
+|---|---|---|---|
+| P1 | [`glow`](https://github.com/charmbracelet/glow) | markdown (`.md`/`.markdown`), and the rendered half of `.ipynb` (via `pandoc`'s markdown conversion) | falls back to the `file(1)`+`hexyl` guard with an install hint |
+| P1 | [`chafa`](https://github.com/hpjansson/chafa) | still images (`png`/`jpg`/`jpeg`/`webp`/`bmp`) and animated gif (`.gif`, first-frame still if `--animate` degrades) | images/gif fall back to the `file(1)`+`hexyl` guard with an install hint |
+| P1 | [`hexyl`](https://github.com/sharkdp/hexyl) | the first-KB hexdump in the always-on unknown-binary guard | the guard still shows the `file(1)` type line + install hint, just without the hexdump |
+| P2 | `rsvg-convert` (Homebrew `librsvg`) | svg (`.svg`) -> png -> `chafa` | falls back to the `file(1)`+`hexyl` guard with an install hint |
+| P2 | `pdftoppm` + `pdftotext` (Homebrew `poppler`) | pdf (`.pdf`): first-page image (`pdftoppm` -> `chafa`) plus extracted text | missing `pdftoppm` degrades to `pdftotext`-only text mode; missing both falls back to the `file(1)`+`hexyl` guard with an install hint |
+| P2 | [`qsv`](https://github.com/dathere/qsv) | csv/tsv (`.csv`/`.tsv`) as an aligned table | renders as plain text via `less`, then the guard if even that fails |
+| P2 | [`jq`](https://github.com/jqlang/jq) | minified json (`.json`), pretty-printed | renders as plain text via `less`, then the guard if even that fails |
+| P3 | [`pandoc`](https://pandoc.org/) | office docs (`docx`/`xlsx` -> markdown or csv) and `.ipynb` notebooks (-> markdown, then `glow`) | office docs fall back to the `file(1)`+`hexyl` guard with an install hint; notebooks degrade to plain text, then the guard |
+| P3 | `ffprobe` + `ffmpeg` (Homebrew `ffmpeg`) | media (`mp4`/`mov`/`mp3`): metadata plus a poster-frame image (never playback) | missing `ffmpeg` degrades to `ffprobe` metadata only; missing both falls back to the `file(1)`+`hexyl` guard with an install hint |
+| P3 | `sqlite3` (Homebrew `sqlite`) | sqlite databases (`.sqlite`/`.db`): schema + table listing | falls back to the `file(1)`+`hexyl` guard with an install hint |
+| , (base-system) | `unzip` / `tar` | archives (`zip`/`tar`/`tgz`/`jar`): content listing (`unzip -l` / `tar -tf`) | always present on macOS + Linux; not installed by this script |
+| , (base-system) | `plutil` | plist files (`.plist`): structured dump (`plutil -p`) | always present on macOS; not installed by this script |
+| , (base-system, hard dependency) | `file` | the mime/type discriminator every renderer (and the always-on fallback) is gated on | always present on macOS + Linux; not installed by this script |
+
 ## How it works
 
 - **preview** opens a plugin overlay pane (a real TTY), reads `$QUICKLOOK_TOKEN`, an argument, or the clipboard, resolves it through the [handler registry](DESIGN.md#handler-registry), and renders it per `RESOLVED_MODE`: a `file` opens in `less` (bat as the `LESSOPEN` colorizer), a `browser` URL is handed to `url_open` and the overlay closes, a `command` token (vcs) or `viewer` degrade (a directory without herdr-file-viewer installed) pages its output through `less -R`. Esc-to-quit and the three in-popup shell-escapes ship via a `lesskey` file: `o` escalates via less's single `visual` slot (`$VISUAL` -> `escalate.sh`); `e` and `d` cannot reuse that slot, so `e` is bound to less's `pshell` action (`escalate-editor.sh`) and `d` to its `shell` action (`dirty-diff.sh`), each with a `^P` extra-string prefix that suppresses the shell-escape's normal "done" prompt so the overlay resumes cleanly. See [DESIGN.md](DESIGN.md#the-lesskey-three-slot-map) for why there are only three slots to go around.
