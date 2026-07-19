@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+## 0.4.1 (2026-07-20)
+
 - Demo roster pruned to living features only: removed the pick-anywhere,
   pluck-chain, linkify, and old overlay-keys recordings (their features were
   replaced by the hint picker in 0.4.0); kept tokens-tour and recents.

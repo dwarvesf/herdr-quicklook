@@ -10,7 +10,7 @@
 
 id = "herdr-quicklook"
 name = "herdr-quicklook"
-version = "0.4.0"
+version = "0.4.1"
 description = "Quick Look for herdr: preview clipboard paths, Ctrl-click pane tokens, follow agent suggestions, or escalate into the file viewer."
 min_herdr_version = "0.7.0"
 platforms = ["linux", "macos"]
