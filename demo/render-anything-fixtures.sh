@@ -40,7 +40,9 @@ write_open_wrapper() {
 # --- images tour: png, gif, svg, pdf ---
 img_dir=/private/tmp/ql-demo-images
 mkdir -p "$img_dir"
-sips -s format png "$worktree/demo/linkify.gif" --out "$img_dir/sample.png" >/dev/null
+# A vivid generated image (not a terminal screenshot): reads as "a picture"
+# in the chafa ANSI render, which is the beat's whole point.
+ffmpeg -y -f lavfi -i mandelbrot=size=640x400 -frames:v 1 "$img_dir/sample.png" >/dev/null 2>&1
 # A REAL multi-frame animated gif (8 frames @ 4fps = 2s of source animation).
 # Safe now that #35 (97bc94d) fixed gif.sh's chafa invocation to
 # `--animate=on` (chafa 1.18.2 requires an explicit =BOOL) and added a real
