@@ -13,6 +13,17 @@
   present, archives fall to the fallback guard below in the rare case
   `unzip`/`tar` are somehow absent (they are base-system).
 
+- The preview overlay renders the P3 file types: Jupyter notebooks (`.ipynb`,
+  via `pandoc`'s ipynb reader -> markdown -> `glow`), office documents
+  (`docx`/`xlsx`, via `pandoc` -> markdown -> `glow`, `xlsx` shows its first
+  sheet only), media (`mp4`/`mov`/`mp3`, `ffprobe` metadata plus a bounded
+  `ffmpeg` first-frame poster for video - **never playback**), sqlite
+  databases (`.sqlite`/`.db`, table list + schema via `sqlite3 -readonly` -
+  never a row dump), and plists (`.plist`, `plutil -p`). Every kind degrades
+  to plain text (for the text-shaped `.ipynb`) or the fallback guard below
+  (for the binary-shaped kinds) when its tool is absent, never a crash or a
+  raw-byte dump.
+
 - Unknown/binary files now render through an always-on fallback guard: a
   `file(1)` type line, a bounded first-KB hexdump (`hexyl`, degrading to
   `xxd` then the base-system `od`), and an "install `<tool>`" hint when a

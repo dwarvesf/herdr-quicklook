@@ -48,6 +48,11 @@ Once a token resolves to a local file, a second registry decides HOW to draw it:
 | archives (`zip`/`tar`/`tgz`/`jar`) | A content listing (`unzip -l` / `tar -tf`), paged - `unzip`/`tar` are base-system, so this rarely degrades |
 | csv/tsv (`.csv`/`.tsv`) | An aligned table via [`qsv table`](https://github.com/dathere/qsv); degrades to the plain-text preview when `qsv` is absent |
 | json (`.json`) | Pretty-printed via `jq .` (fixes minified/single-line json); degrades to the plain-text preview when `jq` is absent |
+| Jupyter notebooks (`.ipynb`) | `pandoc`'s ipynb reader converts cells to markdown (its `::: {.cell ...}` fences stripped), rendered via the same `glow` path as plain markdown; degrades to the plain-text preview (a notebook is JSON, still readable) when `pandoc` or `glow` is absent |
+| office documents (`docx`/`xlsx`) | `pandoc` converts to markdown and renders via the same `glow` path (`xlsx` shows the FIRST sheet only); falls back to the guard below when `pandoc` or `glow` is absent (an office file is binary, not readable as plain text) |
+| media (`mp4`/`mov`/`mp3`) | `ffprobe` metadata (duration/codec/dimensions/bitrate) always, plus an `ffmpeg` first-frame poster drawn inline via `chafa` for video - **never playback**, every probe/extraction is bounded so a bad or huge file can't hang the pane; audio degrades to metadata-only (no poster to extract); falls back to the guard below when `ffprobe` (or, for video, `ffmpeg`) is absent |
+| sqlite databases (`.sqlite`/`.db`) | Table list + schema via `sqlite3 -readonly` - never a row dump; falls back to the guard below when `sqlite3` is absent |
+| plists (`.plist`) | A structured dump via `plutil -p` (base-system on macOS, works for both XML and binary plists); falls back to the guard below on Linux, where `plutil` doesn't exist |
 | unknown / binary (the catch-all fallback) | A `file(1)` one-line type description, a bounded first-~1KB hexdump ([`hexyl`](https://github.com/sharkdp/hexyl) when installed, degrading to `xxd` then the base-system `od` - never raw bytes), and an "install `<tool>`" hint when the extension maps to a known type whose renderer tool isn't on PATH yet |
 
 ## Install
