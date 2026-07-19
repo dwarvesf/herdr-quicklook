@@ -25,6 +25,7 @@ set -- plugin pane open \
   --plugin herdr-quicklook \
   --entrypoint preview \
   --placement overlay \
+  --width 90% --height 90% \
   --focus \
   --env "QUICKLOOK_TOKEN=$token"
 # env, never --cwd: --cwd breaks the pane's relative command resolution and

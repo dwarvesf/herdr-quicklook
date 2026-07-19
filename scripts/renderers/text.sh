@@ -31,7 +31,7 @@ render_text() {
   # Read by the lesskey `e` pshell binding (escalate-editor.sh); see lesskey.
   export QUICKLOOK_EDITOR_SCRIPT="$LIB_DIR/escalate-editor.sh"
   if command -v bat >/dev/null 2>&1; then
-    export LESSOPEN='|bat --color=always --style=numbers,header %s'
+    export LESSOPEN='|bat --color=always --style=numbers %s'
     exec less -R "${lesskey_args[@]}" ${line:++$line} "$target"
   fi
   exec less -N "${lesskey_args[@]}" ${line:++$line} "$target"

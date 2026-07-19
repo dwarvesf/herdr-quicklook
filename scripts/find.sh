@@ -24,6 +24,7 @@ set -- plugin pane open \
   --plugin herdr-quicklook \
   --entrypoint find-pane \
   --placement overlay \
+  --width 90% --height 90% \
   --focus
 
 if [ -n "$repo" ] && [ -d "$repo" ]; then
