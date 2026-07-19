@@ -55,12 +55,12 @@ wait_close() {
 
 # Pluck's scheme, Han's palette: the snapshot dims to dark grey so hints pop,
 # the token text goes bright yellow, and the hint badge is bold black on
-# BRIGHT yellow (256-color 226: the palette "yellow" renders orange under
+# bright yellow #fffd01 (truecolor: the palette "yellow" renders orange under
 # one-dark). Every style opens with a reset so it never inherits the dim.
 DIM=$'\033[2;90m'
 RESET=$'\033[0m'
-H_KEY=$'\033[0;1;30;48;5;226m'
-H_TOK=$'\033[0;38;5;226m'
+H_KEY=$'\033[0;1;30;48;2;255;253;1m'
+H_TOK=$'\033[0;38;2;255;253;1m'
 H_OFF=$'\033[0m'
 OSC8_OFF=$'\033]8;;\033\\'
 

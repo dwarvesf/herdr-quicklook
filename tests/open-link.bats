@@ -69,8 +69,8 @@ teardown() {
   # In-place overlay: the hint letter replaces the token's first char inside
   # the snapshot line (black on bright yellow); the surrounding text stays.
   [[ "$output" == *"changed "* ]]
-  [[ "$output" == *$'\033[0;1;30;48;5;226ma\033[0m\033[0;38;5;226mrc/x.go:7\033[0m'* ]]
-  [[ "$output" == *$'\033[0;1;30;48;5;226ms\033[0m\033[0;38;5;226mttps://example.com/docs\033[0m'* ]]
+  [[ "$output" == *$'\033[0;1;30;48;2;255;253;1ma\033[0m\033[0;38;2;255;253;1mrc/x.go:7\033[0m'* ]]
+  [[ "$output" == *$'\033[0;1;30;48;2;255;253;1ms\033[0m\033[0;38;2;255;253;1mttps://example.com/docs\033[0m'* ]]
   # header removed for pluck-parity smoothness; OSC-8 links assert clickability
 }
 
