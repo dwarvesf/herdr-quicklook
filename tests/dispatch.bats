@@ -11,10 +11,15 @@ setup() {
   SCRIPT="$BATS_TEST_DIRNAME/../scripts/preview-pane.sh"
 
   FIX="$(cd "$(mktemp -d)" && pwd -P)"
-  # a repo whose DIRECTORY NAME is "myrepo" so a github URL for repo "myrepo" matches
+  # a repo whose DIRECTORY NAME is "myrepo" so a github URL for repo "myrepo" matches.
+  # .txt, not .md: this suite is proving path/line dispatch wiring through the
+  # render registry's `text` renderer (`less` directly, +LINE jump intact) -
+  # a real .md extension would now legitimately route through the markdown
+  # renderer (SG-03, glow on PATH here via /opt/homebrew/bin below), which
+  # has no line-jump by design (see tests/renderers-markdown.bats instead).
   mkdir -p "$FIX/myrepo"
   git -C "$FIX/myrepo" init -q -b main
-  printf 'line1\nline2\nline3\n' > "$FIX/myrepo/f.md"
+  printf 'line1\nline2\nline3\n' > "$FIX/myrepo/f.txt"
   git -C "$FIX/myrepo" add -A
   git -C "$FIX/myrepo" -c user.email=t@t -c user.name=t commit -qm fix
 
@@ -48,19 +53,19 @@ teardown() {
 }
 
 @test "dispatch: github blob URL opens the local file at the line" {
-  export QUICKLOOK_TOKEN="https://github.com/owner/myrepo/blob/main/f.md#L3"
+  export QUICKLOOK_TOKEN="https://github.com/owner/myrepo/blob/main/f.txt#L3"
   run bash "$SCRIPT"
   [ "$status" -eq 0 ]
   # resolved to the LOCAL file, with the +3 line jump
-  [[ "$output" == *"$FIX/myrepo/f.md"* ]]
+  [[ "$output" == *"$FIX/myrepo/f.txt"* ]]
   [[ "$output" == *"+3"* ]]
 }
 
 @test "dispatch: a plain relative path token opens locally" {
-  export QUICKLOOK_TOKEN="f.md:2"
+  export QUICKLOOK_TOKEN="f.txt:2"
   run bash "$SCRIPT"
   [ "$status" -eq 0 ]
-  [[ "$output" == *"$FIX/myrepo/f.md"* ]]
+  [[ "$output" == *"$FIX/myrepo/f.txt"* ]]
   [[ "$output" == *"+2"* ]]
 }
 

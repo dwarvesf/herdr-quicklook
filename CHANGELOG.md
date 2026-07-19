@@ -9,6 +9,10 @@
   the floor every other v0.4 renderer degrades onto, so a preview never
   dumps a file's raw bytes into the terminal.
 
+- New render type: markdown (`.md`/`.markdown`) renders via `glow` in the
+  preview pane, paged; degrades to the plain-text preview when `glow` is
+  absent (a markdown file is still perfectly readable as text).
+
 - Bare domains (hermes.d.foundation, herdr.dev) classify as urls and open
   the browser with an https scheme, gated on a TLD allowlist so file
   extensions (.md, .go, .sh) never misclassify.
