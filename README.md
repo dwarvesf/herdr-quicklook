@@ -114,7 +114,7 @@ The log lives outside any git repo, at `${XDG_STATE_HOME:-~/.local/state}/herdr-
 
 ## Hint picker (`prefix+v`)
 
-The one picker. Press the binding and the pane re-renders dimmed with a one-letter hint overlaid, pluck-style, on every openable token: the letter replaces the token's first character (bold black on bright yellow), the rest of the token turns yellow, and columns never shift, so you keep the full context of the screen you were reading. Type the letter and the token opens by TYPE: a file in the preview popup, a directory in the file-viewer's own tab, a URL in the browser, a SHA through `git show`. `Esc` or `q` cancels.
+The one picker. Press the binding and the pane re-renders dimmed with a one-letter hint overlaid, pluck-style, on every openable token: the letter replaces the token's first character (bold black on bright yellow), the rest of the token turns yellow, and columns never shift, so you keep the full context of the screen you were reading. Type the letter and the token opens by TYPE: a file in the 90% preview popup (UPPERCASE the letter to open a FULL persistent tab pane instead), a directory in the file-viewer's own tab, a URL in the browser, a SHA through `git show`. `Esc` or `q` cancels.
 
 Every hinted token is also an OSC-8 link on this plugin's `.invalid` sentinel transport, so Ctrl+click opens the same way the letter does. The sentinel URLs are accepted only after a canonical encode/decode check; they are an internal transport, never a network destination.
 

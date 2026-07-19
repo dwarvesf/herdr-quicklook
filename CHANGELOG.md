@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+- UPPERCASE hint letter opens the pick in a full persistent tab pane;
+  lowercase (and click) keep the 90% popup.
+
 - The workspace sweep also probes each repo's house-standard worktrees
   (.claude/worktrees/*), so a gate-branch artifact opens from any pane; the
   not-found message now names every rung.

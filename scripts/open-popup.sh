@@ -15,13 +15,18 @@ herdr_bin="${HERDR_BIN_PATH:-herdr}"
 token="${1:-}"
 [ -n "$token" ] || exit 0
 
+# QUICKLOOK_OPEN_PLACEMENT=tab opens a FULL persistent tab pane instead of
+# the transient popup (the hint overlay's UPPERCASE pick).
+placement="${QUICKLOOK_OPEN_PLACEMENT:-popup}"
 set -- plugin pane open \
   --plugin herdr-quicklook \
   --entrypoint preview \
-  --placement popup \
-  --width 90% --height 90% \
+  --placement "$placement" \
   --focus \
   --env "QUICKLOOK_TOKEN=$token"
+if [ "$placement" = "popup" ]; then
+  set -- "$@" --width 90% --height 90%
+fi
 
 if [ -n "${QUICKLOOK_PREVIEW_CWD:-$PWD}" ]; then
   set -- "$@" --env "QUICKLOOK_PREVIEW_CWD=${QUICKLOOK_PREVIEW_CWD:-$PWD}"
