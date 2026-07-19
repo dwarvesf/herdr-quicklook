@@ -55,15 +55,15 @@ teardown() {
   snap_file="$FIX/snap"
   printf 'changed src/x.go:7 today\n' >"$snap_file"
   printf 'see https://example.com/docs\n' >>"$snap_file"
+  path_uri="$(quicklook_link_uri 'src/x.go:7')"
+  url_uri="$(quicklook_link_uri 'https://example.com/docs')"
   tokens_file="$FIX/tokens"
-  printf 'src/x.go:7\t1\tpath  src/x.go:7\n' >"$tokens_file"
-  printf 'https://example.com/docs\t2\turl   https://example.com/docs\n' >>"$tokens_file"
+  printf 'src/x.go:7\t1\t%s\tpath  src/x.go:7\n' "$path_uri" >"$tokens_file"
+  printf 'https://example.com/docs\t2\t%s\turl   https://example.com/docs\n' "$url_uri" >>"$tokens_file"
   export QUICKLOOK_HINT_TOKENS_FILE="$tokens_file"
   export QUICKLOOK_HINT_SNAP_FILE="$snap_file"
   run bash "$HINT_PANE" </dev/null
   [ "$status" -eq 0 ]
-  path_uri="$(quicklook_link_uri 'src/x.go:7')"
-  url_uri="$(quicklook_link_uri 'https://example.com/docs')"
   [[ "$output" == *"$path_uri"* ]]
   [[ "$output" == *"$url_uri"* ]]
   # In-place overlay: the hint letter replaces the token's first char inside
@@ -79,7 +79,7 @@ teardown() {
   snap_file="$FIX/snap"
   printf 'nothing relevant here\n' >"$snap_file"
   tokens_file="$FIX/tokens"
-  printf 'src/x.go:7\t1\tpath  src/x.go:7\n' >"$tokens_file"
+  printf 'src/x.go:7\t1\t\tpath  src/x.go:7\n' >"$tokens_file"
   export QUICKLOOK_HINT_TOKENS_FILE="$tokens_file"
   export QUICKLOOK_HINT_SNAP_FILE="$snap_file"
   run bash "$HINT_PANE" </dev/null

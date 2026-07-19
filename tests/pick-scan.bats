@@ -83,6 +83,11 @@ teardown() {
   [ "$output" = "$(printf 'widget\tname\t1')" ]
 }
 
+@test "pick_scan_text: QUICKLOOK_SCAN_SKIP_NAMES=1 drops the bare-name fuzzy entirely" {
+  QUICKLOOK_SCAN_SKIP_NAMES=1 run pick_scan_text <<<'check the widget module'
+  [ -z "$output" ]
+}
+
 @test "pick_scan_text: a bare filename with an AMBIGUOUS substring hit is dropped, not a crash" {
   printf 'x\n' >"$FIX/repo/src/second-widget.md"
   git -C "$FIX/repo" add -A

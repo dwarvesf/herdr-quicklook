@@ -870,7 +870,10 @@ _pick_classify_span() {
       [[ "$span" =~ ^(.+):([0-9]+)$ ]] && clip_path="${BASH_REMATCH[1]}"
       if _pick_resolve_local "$clip_path" >/dev/null; then
         _PICK_CLASSIFY_KIND='path'
-      elif _pick_bare_name_hit_local "$clip_path"; then
+      elif [ -z "${QUICKLOOK_SCAN_SKIP_NAMES:-}" ] && _pick_bare_name_hit_local "$clip_path"; then
+        # QUICKLOOK_SCAN_SKIP_NAMES=1 drops the bare-name fuzzy entirely: it
+        # is both the noisiest kind (any prose word matching one tracked
+        # file) and the most expensive (a list walk per unresolved span).
         _PICK_CLASSIFY_KIND='name'
       fi
       ;;
