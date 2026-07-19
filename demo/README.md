@@ -5,6 +5,7 @@ covering the token-opening flows and, since v0.4, the render registry itself:
 
 | GIF | Shows |
 |---|---|
+| `hint-flow-tour.gif` | The hero take: `prefix+v` overlays a one-letter hint on every openable token; a letter pick opens `sample.md` (glow) in herdr's 90% popup, a second pick opens `sample.csv` (qsv table, ~40 rows) with `d`/`u` half-page scroll visibly moving it |
 | `linkify.gif` | `prefix+shift+l` opens the link overlay over real pane output; an SGR Ctrl+click opens a bare path locally, closing the preview returns to the link list, and a second Ctrl+click routes the original GitHub blob URL into the local checkout |
 | `tokens-tour.gif` | Every token kind in one pass: a plain path, a GitHub blob URL (opens the local file), a bare commit SHA (`git show`), a `#123` PR reference (`gh pr view`), a directory (`eza --tree`) |
 | `overlay-keys-tour.gif` | The three in-overlay keys: `d` (dirty-diff toggle), `e` (edit in `$EDITOR`), `o` (escalate to herdr-file-viewer) |
@@ -20,6 +21,13 @@ covering the token-opening flows and, since v0.4, the render registry itself:
 ```sh
 git clone <this repo> /private/tmp/demo/herdr-quicklook   # NOT /tmp/... (see below)
 cd /private/tmp/demo/herdr-quicklook
+
+# the hero take: hint-pick sample.md then sample.csv, records against its
+# own /private/tmp/ql-demo-hint fixtures - run the fixtures script first:
+./demo/render-anything-fixtures.sh
+vhs demo/hint-flow-tour.tape    # writes demo/hint-flow-tour.gif
+gifsicle -O3 --colors 256 demo/hint-flow-tour.gif -o /tmp/h.gif && mv -f /tmp/h.gif demo/hint-flow-tour.gif
+
 vhs demo/linkify.tape           # writes demo/linkify.gif
 gifsicle -O3 --colors 256 demo/linkify.gif -o demo/linkify.optimized.gif && mv demo/linkify.optimized.gif demo/linkify.gif
 vhs demo/tokens-tour.tape        # writes demo/tokens-tour.gif
@@ -196,3 +204,32 @@ the tape file's own directory - always `cd` into the checkout first.
   the always-on guard catching a file no renderer will touch. No internal paths
   beyond `/private/tmp/ql-demo-data/*`; every fixture is invented placeholder
   content (fruit names); no client/Dwarves data.
+- **Hint-key assignment shifts with whatever is ON SCREEN, including the invoking
+  command itself.** `hint`'s ranking is tier-then-bottom-of-screen-first over
+  `asdfghjklwertyuiopzxcvbnm`; typing `herdr plugin action invoke hint --plugin
+  herdr-quicklook >/dev/null 2>&1` directly into the pane (the CLI-invoke
+  precedent, same as every tape past the first `prefix+v`) leaves `/dev/null`
+  visible on screen as a real path-tier token, and its line sits BELOW the
+  fixture prose - so it claims key `a`, bumping `sample.csv` to `s` and
+  `sample.md` to `d` (confirmed empirically: an isolated `herdr pane read` probe
+  with the same invoke issued over the API instead, where the command text
+  never appears on screen, assigned `a`/`s` to csv/md - the visible redirect
+  target is what shifts the map, not the fixtures). Verify the live overlay
+  frame before hard-coding a hint letter in a tape; don't assume it from an
+  API-only probe.
+- **`hint-flow-tour.gif` verified**: one-dark theme throughout; frame indices
+  from a 5fps extraction of the optimized gif (148 frames, 29.56s). Frame 40
+  (t=7.8s) and frame 48 (t=9.4s): the dimmed snapshot with bright-yellow hint
+  keys on `notes.txt` (`f`), `sample.md` (`d`), `sample.csv` (`s`), and
+  `/dev/null` (`a`). Frame 56/62 (t=11.0-12.2s): `d` picked -> the 90% popup
+  renders `sample.md` via glow (`# Fruit Stand Setup` heading, bullet list,
+  ordered steps, all visible). Frame 96/100 (t=19.0-19.8s): the SECOND overlay
+  invoke shows the identical dim+hint frame with the "pick by letter" banner
+  in scrollback above it. Frame 112/118 (t=22.2-23.4s): `s` picked -> the qsv
+  table for `sample.csv`, aligned columns, rows `apple-01`...`jackfruit-29`
+  visible (pre-scroll). Frame 124 (t=24.6s): after `d`, the table scrolled to
+  its last page (`rambutan-30`...`rambutan-40`, `(END)` marker) - a real
+  half-page-down move. Frame 128/130 (t=25.4-25.8s): after `u`, back to
+  `apple-01`...`jackfruit-29` - the round trip confirmed. No internal path
+  beyond the workspace label `ql-demo-hint` (the fixture dir's own basename);
+  no client/Dwarves data.

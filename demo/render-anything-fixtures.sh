@@ -1,12 +1,12 @@
 #!/bin/bash
-# Generates the three neutral /private/tmp scratch dirs the v0.4 render-tour
-# tapes (render-images-tour.tape, render-docs-tour.tape,
-# render-data-fallback.tape) record against, plus a tiny `open` wrapper in
-# each one. Never /tmp - macOS's /tmp is a symlink to /private/tmp and a
-# shell whose $PWD shows the symlinked form breaks repo-containment checks
-# elsewhere in this plugin (see demo/README.md's landmines). Every fixture
-# is invented placeholder content (fruit names, hello-world shapes) - never
-# real data.
+# Generates the neutral /private/tmp scratch dirs the render-tour tapes
+# (render-images-tour.tape, render-docs-tour.tape, render-data-fallback.tape)
+# and the hint-flow tour (hint-flow-tour.tape) record against, plus a tiny
+# `open` wrapper in each one. Never /tmp - macOS's /tmp is a symlink to
+# /private/tmp and a shell whose $PWD shows the symlinked form breaks
+# repo-containment checks elsewhere in this plugin (see demo/README.md's
+# landmines). Every fixture is invented placeholder content (fruit names,
+# hello-world shapes) - never real data.
 #
 # Usage: ./demo/render-anything-fixtures.sh   (run from this checkout)
 set -euo pipefail
@@ -137,4 +137,44 @@ EOF
 head -c 800 /bin/ls >"$data_dir/mystery.ipynb"
 write_open_wrapper "$data_dir"
 
-echo "fixtures ready: $img_dir, $docs_dir, $data_dir"
+# --- hint tour: notes.txt mentioning two openable tokens, a headed md, a
+# ~40-row csv (long enough that d/u half-page scroll visibly moves it) ---
+hint_dir=/private/tmp/ql-demo-hint
+mkdir -p "$hint_dir"
+cat >"$hint_dir/notes.txt" <<'EOF'
+setup + inventory notes for the fruit stand tool
+
+see sample.md for the setup steps
+raw counts live in sample.csv
+EOF
+cat >"$hint_dir/sample.md" <<'EOF'
+# Fruit Stand Setup
+
+Read this before touching the inventory tool.
+
+## Requirements
+
+- bash >= 4
+- a `.env` with `FRUIT_STAND_TOKEN` set
+
+## Steps
+
+1. `fruit-stand init`
+2. `fruit-stand import sample.csv`
+3. `fruit-stand serve`
+
+See `sample.csv` for the seed data this imports.
+EOF
+{
+  echo "fruit,qty,price_usd"
+  fruits="apple banana mango kiwi papaya dragonfruit lychee durian jackfruit rambutan"
+  n=1
+  while [ "$n" -le 40 ]; do
+    f=$(printf '%s\n' $fruits | sed -n "$(((n - 1) % 10 + 1))p")
+    printf '%s-%02d,%d,%d.%02d\n' "$f" "$n" $((n * 3 % 97 + 5)) $((n % 9 + 1)) $((n * 7 % 100))
+    n=$((n + 1))
+  done
+} >"$hint_dir/sample.csv"
+write_open_wrapper "$hint_dir"
+
+echo "fixtures ready: $img_dir, $docs_dir, $data_dir, $hint_dir"

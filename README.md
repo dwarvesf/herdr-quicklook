@@ -238,6 +238,10 @@ already-tagged version.
 
 ## Demo
 
+**`prefix+v` hint-pick to popup** - the hint overlay lands a one-letter hint on every openable token; type the letter (or plain-click it) and it opens in herdr's 90% popup:
+
+![hint flow tour: prefix+v overlays yellow hints on every openable token, a letter pick opens the glow-rendered markdown in the 90% popup, a second pick opens the csv as a qsv table with d/u half-page scroll visible against its 40 rows](demo/hint-flow-tour.gif)
+
 **Ctrl+click bare paths without an upstream change** - every hinted token in the `prefix+v` overlay is an OSC-8 link; a real Ctrl+click opens it locally, and a GitHub blob URL Ctrl+clicks straight into the local checkout from any pane (recorded before the hint consolidation; the flow is the same, the overlay is now the in-place hint picker):
 
 ![linkify: bare pane paths become OSC-8 links, Ctrl-click opens a local preview, and repository URLs route through quicklook directly](demo/linkify.gif)
