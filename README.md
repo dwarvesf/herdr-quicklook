@@ -43,6 +43,11 @@ Once a token resolves to a local file, a second registry decides HOW to draw it:
 |---|---|
 | still images (`png`/`jpg`/`jpeg`/`webp`/`bmp`) | Inline ANSI art via [`chafa`](https://github.com/hpjansson/chafa) (kitty-graphics passthrough when the terminal signals support); falls back to the guard below when `chafa` is absent |
 | animated gifs (`.gif`) | Inline animation via `chafa --animate` (bounded duration - never hangs the pane); a first-frame still when `--animate` is unavailable, then the guard below when `chafa` is absent |
+| svg (`.svg`) | `rsvg-convert` to a temp PNG, then the SAME inline chafa render as still images; falls back to the guard below (or, tool-absent, the plain-text preview - an svg is XML) |
+| pdf (`.pdf`) | A page-1 poster (`pdftoppm` -> chafa) plus the extracted text (`pdftotext`), paged together; degrades to text-only when `pdftoppm`/`chafa` are missing, or the guard below when poppler is entirely absent |
+| archives (`zip`/`tar`/`tgz`/`jar`) | A content listing (`unzip -l` / `tar -tf`), paged - `unzip`/`tar` are base-system, so this rarely degrades |
+| csv/tsv (`.csv`/`.tsv`) | An aligned table via [`qsv table`](https://github.com/dathere/qsv); degrades to the plain-text preview when `qsv` is absent |
+| json (`.json`) | Pretty-printed via `jq .` (fixes minified/single-line json); degrades to the plain-text preview when `jq` is absent |
 | unknown / binary (the catch-all fallback) | A `file(1)` one-line type description, a bounded first-~1KB hexdump ([`hexyl`](https://github.com/sharkdp/hexyl) when installed, degrading to `xxd` then the base-system `od` - never raw bytes), and an "install `<tool>`" hint when the extension maps to a known type whose renderer tool isn't on PATH yet |
 
 ## Install

@@ -2,6 +2,17 @@
 
 ## Unreleased
 
+- Five new render types (P2 pack): svg (`.svg`, `rsvg-convert` -> a temp png
+  -> the same inline chafa render as still images), pdf (`.pdf`, a page-1
+  poster via `pdftoppm`+chafa plus extracted text via `pdftotext`, paged
+  together), archives (`zip`/`tar`/`tgz`/`jar`, a content listing via
+  `unzip -l`/`tar -tf`), csv/tsv (`.csv`/`.tsv`, an aligned table via
+  `qsv table`), and json (`.json`, pretty-printed via `jq .`). Each degrades
+  cleanly without its tool: svg/csv/json (all textual content) fall to the
+  plain-text preview, pdf degrades to text-only when only `pdftotext` is
+  present, archives fall to the fallback guard below in the rare case
+  `unzip`/`tar` are somehow absent (they are base-system).
+
 - Unknown/binary files now render through an always-on fallback guard: a
   `file(1)` type line, a bounded first-KB hexdump (`hexyl`, degrading to
   `xxd` then the base-system `od`), and an "install `<tool>`" hint when a
