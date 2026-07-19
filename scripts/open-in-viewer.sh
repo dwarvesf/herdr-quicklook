@@ -108,30 +108,25 @@ case "$rel" in
   *[$'\n\r\t']*) notify "unsafe filename (control chars); refusing"; exit 0 ;;
 esac
 
-tab="$(printf '%s' "$focused" | jq -r '.result.pane.tab_id // empty' 2>/dev/null)"
-files_pane() {
-  "$herdr_bin" pane list 2>/dev/null \
-    | jq -r --arg tab "$tab" \
-        '.result.panes[] | select(.label == "Files" and .tab_id == $tab) | .pane_id' \
-    | head -1
-}
-
-pid="$(files_pane)"
-if [ -z "$pid" ]; then
-  "$herdr_bin" plugin action invoke open-file-viewer --plugin herdr-file-viewer >/dev/null 2>&1 \
-    || { notify "herdr-file-viewer is not installed"; exit 1; }
-  for _ in $(seq 1 20); do
-    pid="$(files_pane)"
-    [ -n "$pid" ] && break
-    sleep 0.15
-  done
-  [ -z "$pid" ] && { notify "file viewer did not open"; exit 1; }
-  sleep 0.5 # let the TUI finish its first tree walk before it eats keys
-else
-  # focus without toggling: zoom on/off, the viewer launcher's own trick
-  "$herdr_bin" pane zoom "$pid" --on >/dev/null 2>&1
-  "$herdr_bin" pane zoom "$pid" --off >/dev/null 2>&1
-fi
+# The viewer opens in its OWN TAB (open-file-viewer-tab switches to an
+# existing viewer tab instead of opening twice): a vertical split would
+# disrupt the origin tab's layout. After the action, focus lands on the
+# viewer pane; poll `pane current` until its label reads "Files".
+"$herdr_bin" plugin action invoke open-file-viewer-tab --plugin herdr-file-viewer >/dev/null 2>&1 \
+  || { notify "herdr-file-viewer is not installed"; exit 1; }
+pid=""
+for _ in $(seq 1 20); do
+  pid="$("$herdr_bin" pane current 2>/dev/null | jq -r '.result.pane.pane_id // empty' 2>/dev/null)"
+  if [ -n "$pid" ]; then
+    label="$("$herdr_bin" pane list 2>/dev/null \
+      | jq -r --arg id "$pid" '.result.panes[] | select(.pane_id == $id) | .label // empty' 2>/dev/null)"
+    [ "$label" = "Files" ] && break
+  fi
+  pid=""
+  sleep 0.15
+done
+[ -z "$pid" ] && { notify "file viewer did not open"; exit 1; }
+sleep 0.5 # let the TUI finish its first tree walk before it eats keys
 
 # rel empty = the target IS the repo root; the viewer already opened rooted
 # there, so there is nothing to goto.

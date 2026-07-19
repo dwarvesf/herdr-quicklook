@@ -187,7 +187,11 @@ JQ
 @test "open-in-viewer viewer mode: reuses the file case's goto-path send-keys sequence" {
   cat > "$STUB/jq" <<'JQ'
 #!/usr/bin/env bash
-printf '{}'
+case "$*" in
+  *".result.pane.pane_id"*) printf 'STUBPANE\n' ;;
+  *".label"*) printf 'Files\n' ;;
+  *) printf '{}' ;;
+esac
 JQ
   chmod +x "$STUB/jq"
   local hlog
@@ -207,15 +211,19 @@ HERDR
   # flow as a file target. This synthetic target ($FIX/myrepo/somedir) is
   # inside the fixture repo, so it reaches send-keys; the out-of-repo and
   # real-dir.sh cases are covered in tests/handlers-dir.bats.
-  grep -qF "pane send-keys {} f" "$hlog"
-  grep -qF "pane send-text {} somedir" "$hlog"
+  grep -qF "pane send-keys STUBPANE f" "$hlog"
+  grep -qF "pane send-text STUBPANE somedir" "$hlog"
   rm -f "$hlog"
 }
 
 @test "open-in-viewer viewer mode: the repo root itself is inside its own tree (opens rooted, no goto)" {
   cat > "$STUB/jq" <<'JQ'
 #!/usr/bin/env bash
-printf '{}'
+case "$*" in
+  *".result.pane.pane_id"*) printf 'STUBPANE\n' ;;
+  *".label"*) printf 'Files\n' ;;
+  *) printf '{}' ;;
+esac
 JQ
   chmod +x "$STUB/jq"
   local hlog
