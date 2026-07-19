@@ -62,13 +62,30 @@ _pick_strip_ansi <"$raw_file" >"$snap_file"
 # never hijacks prefix+v. If it is visible and resolves, route it by type
 # right now - directory to the real file-viewer, everything else (file/URL/
 # SHA) through the preview pane - and never open the overlay.
-if [ -n "$clip" ] && grep -qF -- "$clip" "$snap_file" 2>/dev/null \
-  && resolve_any_token "$clip" >/dev/null 2>&1; then
-  rm -f "$raw_file" "$snap_file" 2>/dev/null
-  if [ "${RESOLVED_MODE:-}" = "viewer" ]; then
-    exec bash "$script_dir/open-in-viewer.sh" "$clip"
+if [ -n "$clip" ] && grep -qF -- "$clip" "$snap_file" 2>/dev/null; then
+  if resolve_any_token "$clip" >/dev/null 2>&1; then
+    rm -f "$raw_file" "$snap_file" 2>/dev/null
+    if [ "${RESOLVED_MODE:-}" = "viewer" ]; then
+      exec bash "$script_dir/open-in-viewer.sh" "$clip"
+    fi
+    exec bash "$script_dir/open-preview.sh" "$clip"
   fi
-  exec bash "$script_dir/open-preview.sh" "$clip"
+  # Visible but unresolvable (a partial or mistyped path): drop into the
+  # fzf finder pre-seeded with it, instead of a hint overlay that cannot
+  # open it either.
+  if [[ "$clip" == */* || "$clip" == *.* ]]; then
+    rm -f "$raw_file" "$snap_file" 2>/dev/null
+    set -- plugin pane open \
+      --plugin herdr-quicklook \
+      --entrypoint find-pane \
+      --placement overlay \
+      --focus \
+      --env "QUICKLOOK_FIND_QUERY=$clip"
+    if [ -n "$repo" ] && [ -d "$repo" ]; then
+      set -- "$@" --env "QUICKLOOK_FIND_CWD=$repo"
+    fi
+    exec "$herdr_bin" "$@"
+  fi
 fi
 
 # Background scan. Token list line: `raw<TAB>line-no<TAB>osc8-uri<TAB>label`

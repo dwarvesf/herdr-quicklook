@@ -65,6 +65,50 @@ SH
   [[ "$output" == *"LESS_ARGS:"*"src/target.md"* ]]
 }
 
+@test "find pane pre-seeds the fzf query from QUICKLOOK_FIND_QUERY" {
+  cat >"$STUB/fzf" <<'SH'
+#!/usr/bin/env bash
+cat >/dev/null
+q=""
+while [ $# -gt 0 ]; do
+  [ "$1" = "--query" ] && q="$2"
+  shift
+done
+printf 'QUERY_SEEN:%s\n' "$q" >&2
+exit 130
+SH
+  chmod +x "$STUB/fzf"
+  export PATH="$STUB:/usr/bin:/bin"
+  export QUICKLOOK_FIND_CWD="$FIX/repo"
+  export QUICKLOOK_FIND_QUERY="src/targ"
+  run bash "$FIND_PANE" </dev/null
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"QUERY_SEEN:src/targ"* ]]
+}
+
+@test "hint action routes a visible-but-unresolvable clipboard path into the seeded finder" {
+  cat >"$STUB/herdr" <<'SH'
+#!/usr/bin/env bash
+if [ "$1" = "pane" ] && [ "$2" = "read" ]; then
+  printf 'agent said src/targ.md is broken\n'
+  exit 0
+fi
+printf '%s\n' "$@"
+SH
+  cat >"$STUB/pbpaste" <<'SH'
+#!/usr/bin/env bash
+printf 'src/targ.md'
+SH
+  chmod +x "$STUB/herdr" "$STUB/pbpaste"
+  export PATH="$STUB:/opt/homebrew/bin:/usr/bin:/bin"
+  export HERDR_PLUGIN_CONTEXT_JSON
+  HERDR_PLUGIN_CONTEXT_JSON="$(jq -cn --arg cwd "$FIX/repo" '{focused_pane_id:"w1-1",focused_pane_cwd:$cwd}')"
+  run bash "$ROOT/scripts/hint.sh"
+  [ "$status" -eq 0 ]
+  grep -qx 'find-pane' <<<"$output"
+  grep -qx 'QUICKLOOK_FIND_QUERY=src/targ.md' <<<"$output"
+}
+
 @test "manifest registers the find overlay and action" {
   python3 - "$ROOT/herdr-plugin.toml" <<'PY'
 import sys

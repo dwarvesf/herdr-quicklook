@@ -46,8 +46,12 @@ list_files() {
 preview_cmd='bat --color=always --style=numbers {} 2>/dev/null || cat {} 2>/dev/null'
 command -v bat >/dev/null 2>&1 || preview_cmd='cat {} 2>/dev/null'
 
+# QUICKLOOK_FIND_QUERY pre-seeds the fzf query: the hint flow drops an
+# on-screen-but-unresolvable clipboard path here, so a partial/typo path
+# lands pre-filtered to its closest matches.
 pick="$(list_files | fzf \
   --prompt="quicklook find ▸ " --reverse --height=100% \
+  --query "${QUICKLOOK_FIND_QUERY:-}" \
   --preview "$preview_cmd" --preview-window='right,60%,border-left')" || exit 0
 [ -z "$pick" ] && exit 0
 
