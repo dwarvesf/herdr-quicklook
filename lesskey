@@ -11,7 +11,9 @@
 # filename); QUICKLOOK_EDITOR_SCRIPT is exported by preview-pane.sh.
 # Verified against a real less 668 session (PR proof).
 #
-# `d` -> git diff: bound to `shell` (the `!` slot), a THIRD distinct action
+# `D` -> git diff (shift-d; lowercase `d` stays less's own half-page-down
+# scroll - the binding used to sit on `d` and shadowed basic navigation):
+# bound to `shell` (the `!` slot), a THIRD distinct action
 # from `o`'s `visual` and `e`'s `pshell`. `shell`'s extra string uses a
 # DIFFERENT %-expansion than pshell/visual: a bare `%` (not the two-char
 # `%g`) is replaced by the current filename , confirmed empirically (a real
@@ -30,4 +32,4 @@
 \e\e quit
 o visual
 e pshell \020"$QUICKLOOK_EDITOR_SCRIPT" ?lm+%lm. %g\n
-d shell \020"$(dirname "$QUICKLOOK_EDITOR_SCRIPT")/dirty-diff.sh" %\n
+D shell \020"$(dirname "$QUICKLOOK_EDITOR_SCRIPT")/dirty-diff.sh" %\n
