@@ -2,6 +2,13 @@
 
 ## Unreleased
 
+- Unknown/binary files now render through an always-on fallback guard: a
+  `file(1)` type line, a bounded first-KB hexdump (`hexyl`, degrading to
+  `xxd` then the base-system `od`), and an "install `<tool>`" hint when a
+  richer renderer exists for the extension but its tool isn't installed -
+  the floor every other v0.4 renderer degrades onto, so a preview never
+  dumps a file's raw bytes into the terminal.
+
 - Bare domains (hermes.d.foundation, herdr.dev) classify as urls and open
   the browser with an https scheme, gated on a TLD allowlist so file
   extensions (.md, .go, .sh) never misclassify.
