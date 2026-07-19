@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+- Demo roster pruned to living features only: removed the pick-anywhere,
+  pluck-chain, linkify, and old overlay-keys recordings (their features were
+  replaced by the hint picker in 0.4.0); kept tokens-tour and recents.
+- README leads with the hero hint-flow demo and a one-sentence pitch.
+
 ## 0.4.0 (2026-07-20)
 
 - UPPERCASE hint letter opens the pick in a full persistent tab pane;
