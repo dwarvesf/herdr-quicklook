@@ -242,29 +242,13 @@ already-tagged version.
 
 ![hint flow tour: prefix+v overlays yellow hints on every openable token, a letter pick opens the glow-rendered markdown in the 90% popup, a second pick opens the csv as a qsv table with d/u half-page scroll visible against its 40 rows](demo/hint-flow-tour.gif)
 
-**Ctrl+click bare paths without an upstream change** - every hinted token in the `prefix+v` overlay is an OSC-8 link; a real Ctrl+click opens it locally, and a GitHub blob URL Ctrl+clicks straight into the local checkout from any pane (recorded before the hint consolidation; the flow is the same, the overlay is now the in-place hint picker):
-
-![linkify: bare pane paths become OSC-8 links, Ctrl-click opens a local preview, and repository URLs route through quicklook directly](demo/linkify.gif)
-
-**Pick anything on screen** - `prefix+v` on a busy pane (real commits, `ls`, a URL) opens the ranked, count-headered pick list; a pick opens in the preview popup (recorded before the hint consolidation; the same ranked scan now runs inside the hint overlay itself, and a settled pick still lands in the popup). Plus the negative control: an empty pane and an empty clipboard yield the honest "nothing openable on screen" instead of a crash:
-
-![pick anywhere: prefix+v scans a busy pane, shows the count header, opens a pick in the preview overlay; then the negative control, an empty pane yields the honest empty-state message](demo/pick-anywhere.gif)
-
 **Every token kind in one pass** - a plain path, a GitHub blob URL (opens the local file), a bare commit SHA (`git show`), a `#123` PR reference (`gh pr view`), a directory (`eza --tree`):
 
 ![tokens tour: path, GitHub blob URL, commit SHA, PR reference, and a directory, all opened from the clipboard](demo/tokens-tour.gif)
 
-**The three in-popup keys** - `D` (dirty-diff toggle), `e` (edit in `$EDITOR`), `o` (escalate to herdr-file-viewer):
-
-![overlay keys tour: d toggles a git diff, e opens $EDITOR, o escalates into herdr-file-viewer](demo/overlay-keys-tour.gif)
-
 **Recents** - fzf-pick an older entry; reopening bumps it back to the front:
 
 ![recents: open two files, then fzf-pick the older one back into view](demo/recents.gif)
-
-**The one-key pluck chain** - herdr-pluck's hint overlay pops, pick a token, quick-look opens it immediately:
-
-![pluck full flow: hint labels appear over visible tokens, pick one, and it opens with no extra keypress](demo/pluck-full-flow.gif)
 
 **Render types in the popup** - once a token resolves to a local file, the render registry draws it by type. The images story - a png (inline `chafa` ANSI art), a gif, an svg (`rsvg-convert` -> `chafa`), a pdf (page-1 poster + extracted text):
 
