@@ -1,18 +1,17 @@
 # herdr-plugin.toml, manifest for herdr-quicklook.
 #
-# Open whatever path or URL is on the clipboard, without leaving herdr:
-#   - `preview` action  -> overlay pane: bat (or less) renders the file; URLs go
-#     to the default browser; bare filenames become a repo-wide fzf pick.
-#   - `open-in-viewer` action -> hands the path to the herdr-file-viewer plugin
-#     pane by driving its own fuzzy-find keys (optional; needs that plugin).
+# Open paths and URLs from the clipboard, pane text, Ctrl-clicks, or agent
+# completion events without leaving herdr. `preview` renders in bat/less,
+# `linkify` turns detected pane tokens into OSC-8 links, and `open-in-viewer`
+# hands paths to the optional herdr-file-viewer plugin.
 #
-# No event hooks, no daemons: both actions run only when invoked (bind them to
-# keys in ~/.config/herdr/config.toml, see README).
+# Actions and panes run only when invoked. The agent-status event hook exits
+# immediately unless QUICKLOOK_AGENT_SUGGESTIONS is explicitly enabled.
 
 id = "herdr-quicklook"
 name = "herdr-quicklook"
 version = "0.3.0"
-description = "Quick Look for herdr: pop the clipboard's path in an overlay, escalate to the file-viewer with one key, URLs go to the browser."
+description = "Quick Look for herdr: preview clipboard paths, Ctrl-click pane tokens, follow agent suggestions, or escalate into the file viewer."
 min_herdr_version = "0.7.0"
 platforms = ["linux", "macos"]
 
@@ -27,15 +26,15 @@ command = ["bash", "scripts/preview-pane.sh"]
 [[actions]]
 id = "preview"
 platforms = ["linux", "macos"]
-title = "Quick-look clipboard path"
-description = "Render the clipboard's file path in an overlay pane; press o inside to escalate to the file-viewer (URLs open the browser)."
+title = "Quick-look a path or URL"
+description = "Render a provided or clipboard token in an overlay; press o inside to escalate to the file viewer."
 command = ["bash", "scripts/open-preview.sh"]
 
 [[actions]]
 id = "open-in-viewer"
 platforms = ["linux", "macos"]
-title = "Open clipboard path in file viewer"
-description = "Open the clipboard's file path inside the herdr-file-viewer pane (requires that plugin)."
+title = "Open a path in file viewer"
+description = "Open a provided or clipboard path inside the herdr-file-viewer pane (requires that plugin)."
 command = ["bash", "scripts/open-in-viewer.sh"]
 
 # The recents picker: an overlay with a real TTY running fzf (same shape as
@@ -67,9 +66,53 @@ title = "Pick anything openable on screen"
 description = "List every openable token currently on screen (path, URL, SHA, #ref, dir, filename), clipboard-preselected when it resolves; Enter opens the pick in the preview overlay."
 command = ["bash", "scripts/pick.sh"]
 
+[[panes]]
+id = "linkify-pane"
+title = "Quicklook Links"
+placement = "overlay"
+command = ["bash", "scripts/linkify-pane.sh"]
+
+[[actions]]
+id = "linkify"
+platforms = ["linux", "macos"]
+title = "Make pane tokens clickable"
+description = "Render every openable token from the focused pane as a Ctrl-clickable link in a refreshable overlay."
+command = ["bash", "scripts/linkify.sh"]
+
+[[actions]]
+id = "open-link"
+platforms = ["linux", "macos"]
+title = "Open a virtual quicklook link"
+description = "Decode a link emitted by the quicklook link overlay and open its token."
+command = ["bash", "scripts/open-link.sh"]
+
+[[actions]]
+id = "agent-suggestion"
+platforms = ["linux", "macos"]
+title = "Open the latest agent suggestion"
+description = "Open the newest token detected by the opt-in agent-status suggestion hook."
+command = ["bash", "scripts/open-suggestion.sh"]
+
 [[actions]]
 id = "pluck-chain"
 platforms = ["linux", "macos"]
 title = "Pluck a token, then quick-look it"
 description = "Show herdr-pluck's hint overlay; on pick, open the token immediately in the preview overlay, no extra keypress. Falls back to the plain clipboard flow when herdr-pluck is not installed."
 command = ["bash", "scripts/pluck-chain.sh"]
+
+[[link_handlers]]
+id = "virtual-token"
+title = "Open quicklook virtual token"
+pattern = "^https://herdr-quicklook\\.invalid/open\\?token=.+$"
+action = "open-link"
+
+[[link_handlers]]
+id = "git-host-token"
+title = "Quick-look repository URL"
+pattern = "^https://(?:github\\.com/[^/]+/[^/]+/(?:blob|raw)/.+|github\\.com/[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+/pull/[0-9]+/?|raw\\.githubusercontent\\.com/[^/]+/[^/]+/.+|gitlab\\.com/[^/]+/[^/]+/-/blob/.+|bitbucket\\.org/[^/]+/[^/]+/src/.+)$"
+action = "preview"
+
+[[events]]
+on = "pane.agent_status_changed"
+platforms = ["linux", "macos"]
+command = ["bash", "scripts/agent-suggest.sh"]

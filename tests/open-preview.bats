@@ -16,7 +16,7 @@ SH
   PATH="$STUB:$PATH"
   export PATH
   # no herdr context; the script falls back cleanly
-  unset HERDR_PLUGIN_CONTEXT_JSON HERDR_WORKSPACE_CWD
+  unset HERDR_PLUGIN_CONTEXT_JSON HERDR_WORKSPACE_CWD HERDR_PLUGIN_CLICKED_URL
 }
 
 teardown() { rm -rf "$STUB"; }
@@ -34,6 +34,14 @@ teardown() { rm -rf "$STUB"; }
   [ "$status" -eq 0 ]
   grep -q -- '--env' <<<"$output"
   grep -qx 'QUICKLOOK_TOKEN=src/x.go:42' <<<"$output"
+}
+
+@test "open-preview: a clicked URL is forwarded ahead of a positional token" {
+  export HERDR_PLUGIN_CLICKED_URL="https://github.com/o/r/blob/main/src/x.go#L42"
+  run bash "$SCRIPT" "ignored.txt"
+  [ "$status" -eq 0 ]
+  grep -qx 'QUICKLOOK_TOKEN=https://github.com/o/r/blob/main/src/x.go#L42' <<<"$output"
+  ! grep -qx 'QUICKLOOK_TOKEN=ignored.txt' <<<"$output"
 }
 
 @test "open-preview: never forwards the literal 'plugin' (the set-- clobber bug)" {

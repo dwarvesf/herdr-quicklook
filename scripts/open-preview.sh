@@ -7,9 +7,9 @@ set -uo pipefail
 herdr_bin="${HERDR_BIN_PATH:-herdr}"
 ctx="${HERDR_PLUGIN_CONTEXT_JSON:-}"
 
-# Capture the caller's token BEFORE any `set --` reassigns the positional
-# parameters (that clobbers $1 to the first herdr-command word otherwise).
-token="${1:-}"
+# Capture the link-handler URL or caller token BEFORE any `set --` reassigns
+# positional parameters (that clobbers $1 to the first herdr-command word).
+token="${HERDR_PLUGIN_CLICKED_URL:-${1:-}}"
 
 repo=""
 if [ -n "$ctx" ] && command -v jq >/dev/null 2>&1; then

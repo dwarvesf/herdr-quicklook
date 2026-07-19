@@ -6,12 +6,12 @@ file, a browser tab, or a paged command. User-facing behavior lives in
 
 ## Token flow
 
-Every action that OPENS a token (`preview`, `open-in-viewer`, `recents`,
-and `pick` once a candidate is chosen) ends up calling the same two
-functions in `scripts/lib.sh`: `pick_token` to get a raw string,
-`resolve_any_token` to classify and resolve it. `pick` additionally has its
-own scan-time path for finding candidates in the first place - see
-[Pick anywhere](#pick-anywhere) below.
+Every token-opening path (`preview`, `open-in-viewer`, `recents`, `pick`,
+`linkify`, direct URL clicks, and agent suggestions) eventually reaches
+`resolve_any_token` in `scripts/lib.sh`. Clipboard-oriented actions call
+`pick_token` first; pane-oriented actions reuse `pick_scan_text` to extract
+ranked candidates before handing one raw token to the same resolver. See
+[Pick anywhere](#pick-anywhere) for the scan-time path.
 
 ```
 $QUICKLOOK_TOKEN env / script arg / clipboard
@@ -130,6 +130,39 @@ needs a token-kind-specific interactive fallback, like `bare-name.sh`) is
 the one exception where the pane scripts' own `RESOLVED_MODE` case blocks
 may need a look, those bodies are the single place all four modes render.
 
+## Virtual link transport
+
+Herdr plugin link handlers receive only resolved http(s) URLs. A plain path
+in another terminal pane never reaches a plugin, so `linkify` does not try to
+modify that pane. Instead, `scripts/linkify.sh` captures the origin pane id and
+cwd before opening `linkify-pane`, and the pane runs the existing
+`pick_scan_text` scanner against the origin's visible text.
+
+Each candidate is rendered with an OSC-8 URI of this shape:
+
+```text
+https://herdr-quicklook.invalid/open?token=<percent-encoded-token>
+```
+
+`.invalid` is reserved and never intended for network resolution.
+`quicklook_link_uri` rejects empty/control-bearing tokens and uses jq's `@uri`
+encoder. `quicklook_token_from_link` accepts only the exact prefix, rejects
+extra query/fragment fields, decodes it, and requires a byte-for-byte canonical
+re-encode before returning the token. The `virtual-token` manifest handler then
+runs `open-link`, which clears the clicked sentinel from its environment and
+passes the decoded token to `open-preview.sh`.
+
+Repository URLs printed directly by an application do not need the overlay.
+The narrower `git-host-token` handler routes only URL shapes quicklook improves
+(blob/raw files and pull requests) to the existing `preview` action. Handler
+order is significant: the internal sentinel handler stays first.
+
+`linkify-pane` must remain an `overlay`, not a popup. Herdr overlays are normal
+terminal panes whose OSC-8 cells participate in Ctrl-click resolution; popup
+mouse input is forwarded directly to the popup process before link handling.
+The origin pane id is explicit, so `r` can refresh it even though focus belongs
+to the overlay. The shared scanner remains compatible with macOS system Bash 3.2.
+
 ## The lesskey three-slot map
 
 The preview overlay is `less`, driven by a `lesskey`-compiled binding file.
@@ -176,23 +209,26 @@ RETURN)"` and waits for a keypress before resuming the pager; `^P`
 suppresses that prompt so `e` and `d` resume exactly as seamlessly as `o`'s
 hand-off does.
 
-## Panes and actions topology
+## Panes, actions, and event topology
 
-`herdr-plugin.toml` declares five actions (run by the herdr server with
-**no TTY**) and three overlay panes (each a real TTY):
+Action and event commands run headless. Interactive selectors, pagers, and
+OSC-8 rendering run in one of four real-TTY overlays:
 
 ```
-Actions (no TTY)                        Overlay panes (real TTY)
+Actions/events (no TTY)                  Overlay panes and state
 
-preview ───────────plugin pane open────▶ preview pane (preview-pane.sh)
-                                                  ▲
-recents ───────────plugin pane open────▶ recents-pick pane (recents-pane.sh)
-                                            │
-                                            └─ exec, SAME pane/TTY (not a third pane) ─┘
+preview ───────────plugin pane open─────▶ preview pane (preview-pane.sh)
+                                                   ▲
+recents ───────────plugin pane open─────▶ recents-pick pane
+                                             └─ exec, same pane/TTY ───────────┘
 
-pick ───────────────plugin pane open───▶ pick-pane (pick-pane.sh)
-                                            │
-                                            └─ exec, SAME pane/TTY (not a third pane) ──▶ preview pane (above)
+pick ──────────────plugin pane open─────▶ pick-pane
+                                             └─ exec, same pane/TTY ───────────┘
+
+linkify ───────────plugin pane open─────▶ linkify-pane
+                                             └─ OSC-8 Ctrl+click ─▶ open-link ─┘
+repository URL Ctrl+click ────────────────────────────────▶ preview
+agent status hook ─▶ latest suggestion state ─▶ agent-suggestion ─▶ preview
 
 open-in-viewer ·····herdr socket: send-keys / send-text·····▶ herdr-file-viewer pane (a different plugin)
 
@@ -200,20 +236,14 @@ pluck-chain ········herdr socket: plugin action invoke pluck + clipboard
             ········absent, or invoke fails: plugin action invoke pick···········▶ pick (loops back into the action above)
 ```
 
-`open-in-viewer` and `recents` have no TTY of their own to run interactive
-work in (`bat`'s fzf pick, `less`), so each either opens its own overlay
-pane (`recents`) or drives an *existing* pane over the herdr socket
-(`open-in-viewer`, which never opens a pane of its own, it manipulates
-`herdr-file-viewer`'s). `recents-pane.sh`, once it has a chosen token,
-`exec`s `preview-pane.sh` in the same process/TTY rather than opening a
-third pane, reusing the resolve+render+`record_open` path verbatim means a
-reopened entry bumps to the front of the log exactly like a fresh open,
-with no separate "is this a reopen" bookkeeping. `pick-pane.sh` does the
-same `exec` hand-off to `preview-pane.sh` once a candidate is chosen.
-`pluck-chain` is the one action with no pane of its own: it drives another
-plugin's action (`herdr-pluck`'s `pluck`) over the socket, and on absence
-or failure reroutes into `pick` via that SAME `plugin action invoke`
-primitive rather than a cross-plugin file dependency.
+`open-in-viewer`, `recents`, `pick`, and `linkify` cannot do interactive work
+inside their action command. They either open a plugin pane or drive an
+existing pane through the herdr socket. `recents-pane.sh` and `pick-pane.sh`
+`exec` `preview-pane.sh` after selection so resolution, rendering, and recents
+recording stay on one path. `linkify-pane.sh` remains alive underneath nested
+previews, allowing several Ctrl-clicked tokens to be inspected before closing
+the link snapshot. `pluck-chain` drives herdr-pluck over the socket and falls
+back to `pick` without owning a pane.
 
 ## Pick anywhere
 
@@ -334,6 +364,29 @@ Two guards make this safe to run unattended:
   any write failure is silently swallowed. Recording a "recent" must never
   block the open it is recording.
 
+## Agent suggestion state
+
+The manifest subscribes only to `pane.agent_status_changed`; herdr deliberately
+does not expose high-volume output changes as plugin hooks. The command exits
+before reading a pane unless `QUICKLOOK_AGENT_SUGGESTIONS` is `notify` or
+`preview`, so the default installation has no background scanner. Enabled hooks
+reuse the same Bash 3.2-compatible pane scanner as `pick` and `linkify`.
+
+For an enabled pane, `working` creates one baseline under
+`$HERDR_PLUGIN_STATE_DIR/agent-suggestions`. Further `working` presentation
+events leave it untouched. `blocked` keeps the same baseline. The first
+`done`/`idle` event reads `recent-unwrapped`, computes the suffix after the
+first changed line, removes the baseline, and scans only that delta. This
+avoids repeatedly suggesting tokens from older turns and naturally dedupes a
+subsequent `done` to `idle` presentation change.
+
+A per-pane PID-symlink lock serializes asynchronous event commands and
+recovers after an interrupted hook. The selected candidate and producing cwd
+are atomically written as `latest.json`; the
+`agent-suggestion` action uses that cwd when opening `preview`. A missing
+baseline intentionally yields no suggestion rather than scanning stale
+scrollback after installation or restart.
+
 ## Security notes (cross-cutting, not one handler's job)
 
 - **`command`-mode argv safety**: `RESOLVED_CMD` is always a bash array built
@@ -360,9 +413,10 @@ Two guards make this safe to run unattended:
 ## Testing
 
 `bats tests/` sources `scripts/lib.sh` directly for unit-level coverage
-(the resolve chain, token parsing, priority) and runs the actual scripts
-under `run`/stubbed tools for script-level coverage (dispatch wiring,
-pane-script `RESOLVED_MODE` case blocks, real `lesskey`/`less` sessions for
-the in-popup keys). `shellcheck -x scripts/*.sh scripts/handlers/*.sh` is
-the companion static check. Both run in `./scripts/release.sh` before it
-mutates anything.
+(the resolve chain, token parsing, priority, and virtual-link canonicalization)
+and runs the actual scripts under `run` with stubbed tools for script-level
+coverage. That includes dispatch wiring, pane-script `RESOLVED_MODE` cases,
+OSC-8 overlay output, per-turn agent baseline/delta behavior, and real
+`lesskey`/`less` sessions for the in-popup keys. `shellcheck -x scripts/*.sh
+scripts/handlers/*.sh` is the companion static check. Both run in
+`./scripts/release.sh` before it mutates anything.
