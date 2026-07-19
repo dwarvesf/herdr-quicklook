@@ -30,10 +30,13 @@ fi
 raw="$(pick_token "${1:-}")"
 [ -z "$raw" ] && { notify "nothing to open (no token, clipboard empty)"; exit 0; }
 
-# Base everything on the focused pane, not this script's own cwd
+# Base everything on the focused pane, not this script's own cwd.
+# QUICKLOOK_KEEP_CWD=1 skips that cd: the hint overlay execs this script
+# already standing in the ORIGIN repo, while `pane current` would report the
+# overlay's own pane cwd (the wrong repo for the containment check below).
 focused="$("$herdr_bin" pane current 2>/dev/null)"
 fcwd="$(printf '%s' "$focused" | jq -r '.result.pane.cwd // empty' 2>/dev/null)"
-if [ -n "$fcwd" ]; then cd "$fcwd" 2>/dev/null || true; fi
+if [ -z "${QUICKLOOK_KEEP_CWD:-}" ] && [ -n "$fcwd" ]; then cd "$fcwd" 2>/dev/null || true; fi
 
 target=""
 CLIP_LINE=""

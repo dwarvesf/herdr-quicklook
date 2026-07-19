@@ -52,7 +52,8 @@ wait_close() {
   exit 0
 }
 
-H_KEY=$'\033[1;7m'
+# Vimium-badge hint: bold black on yellow. Token remainder underlined.
+H_KEY=$'\033[1;30;43m'
 H_TOK=$'\033[4m'
 H_OFF=$'\033[0m'
 OSC8_OFF=$'\033]8;;\033\\'
@@ -189,8 +190,18 @@ while IFS= read -rsn1 key <"$tty_in"; do
     *)
       idx="$(hint_index_for_key "$key" 2>/dev/null)" || continue
       [ "$idx" -lt "${#tokens[@]}" ] || continue
-      export QUICKLOOK_TOKEN="${tokens[$idx]}"
       cleanup
+      # Open by TYPE: a directory goes to the real navigable file-viewer
+      # (open-in-viewer's viewer arm can drive another pane over the socket);
+      # everything else - files to the popup pager, URLs to the browser -
+      # rides preview-pane's existing dispatch. QUICKLOOK_KEEP_CWD pins
+      # open-in-viewer to this pane's cwd (the origin repo) instead of the
+      # overlay's own pane cwd.
+      if resolve_any_token "${tokens[$idx]}" 2>/dev/null && [ "${RESOLVED_MODE:-}" = "viewer" ]; then
+        export QUICKLOOK_KEEP_CWD=1
+        exec bash "$script_dir/open-in-viewer.sh" "${tokens[$idx]}"
+      fi
+      export QUICKLOOK_TOKEN="${tokens[$idx]}"
       exec bash "$script_dir/preview-pane.sh"
       ;;
   esac

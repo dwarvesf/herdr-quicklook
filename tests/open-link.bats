@@ -69,8 +69,8 @@ teardown() {
   # In-place overlay: the hint letter replaces the token's first char inside
   # the snapshot line, inverse-video; the surrounding text is untouched.
   [[ "$output" == *"changed "* ]]
-  [[ "$output" == *$'\033[1;7ma\033[0m\033[4mrc/x.go:7\033[0m'* ]]
-  [[ "$output" == *$'\033[1;7ms\033[0m\033[4mttps://example.com/docs\033[0m'* ]]
+  [[ "$output" == *$'\033[1;30;43ma\033[0m\033[4mrc/x.go:7\033[0m'* ]]
+  [[ "$output" == *$'\033[1;30;43ms\033[0m\033[4mttps://example.com/docs\033[0m'* ]]
   [[ "$output" == *"Ctrl+click"* ]]
 }
 
