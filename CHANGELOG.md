@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+- A visible-but-unresolvable clipboard path now drops into the fzf finder
+  pre-seeded as the query (partial/typo paths land on their closest match).
+
 - New `find` action: fzf over tracked files with live bat preview; Enter
   renders the pick through the preview overlay.
 
