@@ -38,7 +38,7 @@ fi
 tokens_file="${QUICKLOOK_HINT_TOKENS_FILE:-}"
 snap_file="${QUICKLOOK_HINT_SNAP_FILE:-}"
 cleanup() {
-  printf '\033[?25h'
+  printf '\033[?25h\033[?7h'
   [ -n "$tokens_file" ] && rm -f "$tokens_file" "$tokens_file.part" 2>/dev/null
   [ -n "$snap_file" ] && rm -f "$snap_file" 2>/dev/null
 }
@@ -67,19 +67,41 @@ OSC8_OFF=$'\033]8;;\033\\'
 NL=$'\n'
 # HOME + hide-cursor for the first paint; repaints overwrite in place and
 # clear only what is below (ESC[J), never the whole screen - a full ESC[2J
-# between paints is the blank-frame flicker pluck does not have.
+# between paints is the blank-frame flicker pluck does not have. Autowrap is
+# OFF while the overlay lives: a snapshot line longer than this pane (the
+# overlay border eats 2 columns) must truncate, not reflow - reflow grows the
+# row count past the pane height, the terminal scrolls, and the next ESC[H
+# paints over a shifted screen (the merged/duplicated-lines corruption).
 HOME=$'\033[H'
 EOD=$'\033[J'
 CURSOR_HIDE=$'\033[?25l'
+WRAP_OFF=$'\033[?7l'
+
+# Snapshot lines + the overlay's real height. Keep the BOTTOM rows when the
+# snapshot is taller than this pane (the border eats rows vs the origin):
+# the bottom is where the user was working.
+snap_lines=()
+if [ -n "$snap_file" ] && [ -f "$snap_file" ]; then
+  while IFS= read -r line || [ -n "$line" ]; do snap_lines+=("$line"); done <"$snap_file"
+fi
+total=${#snap_lines[@]}
+rows="$(stty size <"$tty_in" 2>/dev/null | awk '{print $1}')"
+case "$rows" in '' | *[!0-9]*) rows=0 ;; esac
+offset=0
+[ "$rows" -gt 0 ] && [ "$total" -gt "$rows" ] && offset=$((total - rows))
 
 # First paint: the raw snapshot, instantly, one write, dimmed from the start
-# so the mode-switch is visible without any header line. %s on purpose:
-# snapshot text may contain literal \n / \t sequences that %b would corrupt.
-frame="${CURSOR_HIDE}${HOME}${DIM}"
-if [ -n "$snap_file" ] && [ -f "$snap_file" ]; then
-  frame+="$(cat "$snap_file")"
-fi
-frame+="${RESET}${EOD}"
+# so the mode-switch is visible without any header line. No newline after the
+# last row (that alone scrolls a full pane), %s on purpose: snapshot text may
+# contain literal \n / \t sequences that %b would corrupt.
+frame="${CURSOR_HIDE}${WRAP_OFF}${HOME}"
+i="$offset"
+while [ "$i" -lt "$total" ]; do
+  frame+="${DIM}${snap_lines[$i]}${RESET}"
+  [ $((i + 1)) -lt "$total" ] && frame+="$NL"
+  i=$((i + 1))
+done
+frame+="$EOD"
 printf '%s' "$frame"
 
 # Wait for the background scan (existence of tokens_file = done), polling the
@@ -136,9 +158,20 @@ while [ "$i" -lt "${#tokens[@]}" ]; do
   i=$((i + 1))
 done
 
-ln=0
-while IFS= read -r line || [ -n "$line" ]; do
-  ln=$((ln + 1))
+# Tokens pinned to a line the height-clamp cut still get extras rows.
+i=0
+while [ "$i" -lt "${#tokens[@]}" ]; do
+  ln="${lines_of[$i]}"
+  if [ -n "$ln" ] && [ "$ln" -le "$offset" ] 2>/dev/null; then
+    extras+=("$i")
+  fi
+  i=$((i + 1))
+done
+
+lidx="$offset"
+while [ "$lidx" -lt "$total" ]; do
+  line="${snap_lines[$lidx]}"
+  ln=$((lidx + 1))
   here=()
   i=0
   while [ "$i" -lt "${#tokens[@]}" ]; do
@@ -176,16 +209,17 @@ while IFS= read -r line || [ -n "$line" ]; do
     line="${line:0:$pos}${STYLED}${DIM}${line:$((pos + ${#tok}))}"
     prev_start=$pos
   done
-  frame+="${DIM}${line}${RESET}${NL}"
-done <"$snap_file"
+  frame+="${DIM}${line}${RESET}"
+  [ $((lidx + 1)) -lt "$total" ] && frame+="$NL"
+  lidx=$((lidx + 1))
+done
 
 # Tokens whose text no longer matches their snapshot line (wrapped, trimmed
 # by the scanner, or the off-screen clipboard shape) still get pickable rows.
 if [ "${#extras[@]}" -gt 0 ]; then
-  frame+="$NL"
   for i in "${extras[@]}"; do
     styled_for "$i"
-    frame+="  ${STYLED}  ${DIM}${labels[$i]}${RESET}${NL}"
+    frame+="${NL}  ${STYLED}  ${DIM}${labels[$i]}${RESET}"
   done
 fi
 frame+="$EOD"
