@@ -38,6 +38,7 @@ fi
 tokens_file="${QUICKLOOK_HINT_TOKENS_FILE:-}"
 snap_file="${QUICKLOOK_HINT_SNAP_FILE:-}"
 cleanup() {
+  printf '\033[?25h'
   [ -n "$tokens_file" ] && rm -f "$tokens_file" "$tokens_file.part" 2>/dev/null
   [ -n "$snap_file" ] && rm -f "$snap_file" 2>/dev/null
 }
@@ -63,19 +64,23 @@ H_TOK=$'\033[0;38;5;226m'
 H_OFF=$'\033[0m'
 OSC8_OFF=$'\033]8;;\033\\'
 
-HEADER_WAIT="${H_KEY} quicklook ${H_OFF} hint: scanning…  · Esc/q cancel"
-HEADER_DONE="${H_KEY} quicklook ${H_OFF} hint: type a letter or Ctrl+click to open · Esc/q cancel"
-
 NL=$'\n'
-CLR=$'\033[2J\033[H'
+# HOME + hide-cursor for the first paint; repaints overwrite in place and
+# clear only what is below (ESC[J), never the whole screen - a full ESC[2J
+# between paints is the blank-frame flicker pluck does not have.
+HOME=$'\033[H'
+EOD=$'\033[J'
+CURSOR_HIDE=$'\033[?25l'
 
-# First paint: the raw snapshot, instantly, one write. %s on purpose: snapshot
-# text may contain literal \n / \t sequences that %b would corrupt.
-frame="${CLR}${HEADER_WAIT}${NL}${NL}"
+# First paint: the raw snapshot, instantly, one write, dimmed from the start
+# so the mode-switch is visible without any header line. %s on purpose:
+# snapshot text may contain literal \n / \t sequences that %b would corrupt.
+frame="${CURSOR_HIDE}${HOME}${DIM}"
 if [ -n "$snap_file" ] && [ -f "$snap_file" ]; then
   frame+="$(cat "$snap_file")"
 fi
-printf '%s\n' "$frame"
+frame+="${RESET}${EOD}"
+printf '%s' "$frame"
 
 # Wait for the background scan (existence of tokens_file = done), polling the
 # tty so Esc/q aborts mid-scan. Cap ~5s.
@@ -117,21 +122,19 @@ styled_for() {
   [ -n "$uri" ] && STYLED+="$OSC8_OFF"
 }
 
-# Second paint: snapshot with in-place hint overlays, one write.
-frame="${CLR}${HEADER_DONE}${NL}"
+# Second paint: snapshot with in-place hint overlays, one write, overwriting
+# the first paint in place (no clear, no flicker).
+frame="${HOME}"
 extras=()
 
-# Clipboard row (line-no empty) sits above the snapshot: it may not be on
-# screen at all, but it is the highest-priority pick.
+# Rows with no line-no (not re-locatable on screen) join the extras list.
 i=0
 while [ "$i" -lt "${#tokens[@]}" ]; do
   if [ -z "${lines_of[$i]}" ]; then
-    styled_for "$i"
-    frame+="  ${STYLED}  ${labels[$i]}${NL}"
+    extras+=("$i")
   fi
   i=$((i + 1))
 done
-frame+="$NL"
 
 ln=0
 while IFS= read -r line || [ -n "$line" ]; do
@@ -182,9 +185,10 @@ if [ "${#extras[@]}" -gt 0 ]; then
   frame+="$NL"
   for i in "${extras[@]}"; do
     styled_for "$i"
-    frame+="  ${STYLED}  ${labels[$i]}${NL}"
+    frame+="  ${STYLED}  ${DIM}${labels[$i]}${RESET}${NL}"
   done
 fi
+frame+="$EOD"
 
 printf '%s' "$frame"
 

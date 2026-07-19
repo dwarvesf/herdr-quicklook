@@ -71,7 +71,7 @@ teardown() {
   [[ "$output" == *"changed "* ]]
   [[ "$output" == *$'\033[0;1;30;48;5;226ma\033[0m\033[0;38;5;226mrc/x.go:7\033[0m'* ]]
   [[ "$output" == *$'\033[0;1;30;48;5;226ms\033[0m\033[0;38;5;226mttps://example.com/docs\033[0m'* ]]
-  [[ "$output" == *"Ctrl+click"* ]]
+  # header removed for pluck-parity smoothness; OSC-8 links assert clickability
 }
 
 @test "hint pane parks an unmatchable token in the extras list" {
