@@ -10,7 +10,12 @@ setup() {
   . "$LIB"
 
   FIX="$(cd "$(mktemp -d)" && pwd -P)"
-  printf 'hello world\nline two\n' > "$FIX/text.md"
+  # .txt, not .md: this fixture stands in for "a generic plain text file" in
+  # the fallthrough/dispatch tests below, and a .md extension would collide
+  # with the real match_render_markdown (SG-03) on any host with glow on
+  # PATH - a specific-kind renderer legitimately claiming its own extension,
+  # not a bug in that renderer.
+  printf 'hello world\nline two\n' > "$FIX/text.txt"
   # a real binary file (null + high bytes) so file(1) reports mime-encoding
   # "binary", not a text encoding - see match_render_text/match_render_fallback.
   printf '\x00\x01\x02\xff\xfe\x00binary\x00stuff' > "$FIX/blob.bin"
@@ -24,7 +29,7 @@ teardown() {
 # ---- text/fallback real bodies (the only two non-stub renderers) ----
 
 @test "render-registry: text renderer matches a text file" {
-  match_render_text "$FIX/text.md"
+  match_render_text "$FIX/text.txt"
 }
 
 @test "render-registry: fallback renderer matches a binary file (text declines it)" {
@@ -36,7 +41,7 @@ teardown() {
   # fallback is the always-0 catch-all; RENDER_KINDS ordering (text before
   # fallback), not fallback's own predicate, is what keeps it from shadowing
   # text - see the ordering test below.
-  match_render_fallback "$FIX/text.md"
+  match_render_fallback "$FIX/text.txt"
 }
 
 # ---- an unmatched-by-specific-kind file falls through to text/fallback ----
@@ -44,7 +49,7 @@ teardown() {
 @test "render-registry: every declining stub actually declines a plain text file (proves the fallthrough is real, not a no-op chain)" {
   local kind
   for kind in markdown image gif svg pdf archive csv json ipynb office media sqlite plist; do
-    if "match_render_$kind" "$FIX/text.md"; then
+    if "match_render_$kind" "$FIX/text.txt"; then
       echo "kind $kind unexpectedly claimed a plain text file" >&2
       return 1
     fi
@@ -58,10 +63,10 @@ teardown() {
   run bash -c "
     . '$LIB'
     render_text() { printf 'TEXT-RENDERED:%s\n' \"\$1\"; return 0; }
-    render_any '$FIX/text.md'
+    render_any '$FIX/text.txt'
   "
   [ "$status" -eq 0 ]
-  [ "$output" = "TEXT-RENDERED:$FIX/text.md" ]
+  [ "$output" = "TEXT-RENDERED:$FIX/text.txt" ]
 }
 
 @test "render-registry: render_any dispatches a binary file to the fallback renderer" {
@@ -94,9 +99,9 @@ teardown() {
   render_zzz() { printf 'ZZZ-RENDERED:%s\n' "$1"; return 0; }
   RENDER_KINDS=(zzz "${RENDER_KINDS[@]}")
 
-  run render_any "$FIX/text.md"
+  run render_any "$FIX/text.txt"
   [ "$status" -eq 0 ]
-  [ "$output" = "ZZZ-RENDERED:$FIX/text.md" ]
+  [ "$output" = "ZZZ-RENDERED:$FIX/text.txt" ]
 }
 
 @test "render-registry: first-match ordering - position decides, not the target's real type" {
