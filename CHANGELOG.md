@@ -17,6 +17,10 @@
   reading. Plain left-click on a hinted token opens it (SGR mouse tracking
   inside the overlay - no Ctrl needed there).
 
+- The three render-type demo tours (`render-images-tour.gif`,
+  `render-docs-tour.gif`, `render-data-fallback.gif`) are re-recorded through
+  the popup surface, matching the hero `hint-flow-tour.gif`.
+
 - The bat header line is gone from the text renderer (the less status line
   already shows the full path, and the header wrapped on narrow overlays).
 

@@ -130,6 +130,97 @@ needs a token-kind-specific interactive fallback, like `bare-name.sh`) is
 the one exception where the pane scripts' own `RESOLVED_MODE` case blocks
 may need a look, those bodies are the single place all four modes render.
 
+## Render registry
+
+The handler registry above resolves a token down to `RESOLVED_MODE=file` and
+a local path; the render registry sits one layer downstream and decides HOW
+to draw that path. It is the mechanism behind the [Render types](README.md#render-types)
+table: every file type in that table is one `scripts/renderers/<kind>.sh`.
+
+### The contract
+
+A file TYPE lives entirely in its own `scripts/renderers/<kind>.sh` and
+exports exactly two functions, the render-registry mirror of the
+handler-registry contract above:
+
+```sh
+match_render_<kind> <path>       # rc 0 iff this renderer owns the file's
+                                  # TYPE **and** its required external tool
+                                  # is on PATH. No resolution work, no side
+                                  # effects. May key on extension and/or
+                                  # `file --mime-type` / `file --mime-encoding`.
+render_<kind> <path> [line]      # DRIVES the pane (it owns the real TTY).
+                                  # Free to `exec less <file>`, pipe a
+                                  # formatter through render_command_in_pager,
+                                  # or run an inline renderer then pause.
+                                  # Returns the exit status (a renderer that
+                                  # `exec`s never actually returns). The
+                                  # optional [line] is the RESOLVED_LINE jump
+                                  # target; only text/markdown/pdf-text
+                                  # consume it.
+```
+
+`render_any <path> [line]` (in `scripts/lib.sh`) walks `RENDER_KINDS` in
+order and dispatches to the FIRST `match_render_<kind>` that accepts the
+path, returning that renderer's exit code. `preview-pane.sh`'s
+`RESOLVED_MODE=file` arm calls `render_any "$target" "$CLIP_LINE"` and exits
+with its return code - it owns no render logic of its own. `scripts/renderers/*.sh`
+is auto-sourced by a glob at source time, the SAME mechanism `scripts/handlers/*.sh`
+uses, so adding a kind never touches the sourcing mechanism, only
+`RENDER_KINDS` plus one new file.
+
+### `RENDER_KINDS` order rationale
+
+```sh
+RENDER_KINDS=(markdown image gif svg pdf archive csv json ipynb office media sqlite plist text fallback)
+```
+
+Most-specific kinds first, `text` second-to-last, `fallback` last - the
+same ordering discipline `HANDLER_KINDS` follows (a broad kind must never
+shadow a specific one). `fallback` always matches (`match_render_fallback`
+is an unconditional `return 0`), so it is the floor of the whole registry:
+the guarantee that nothing ever dumps raw bytes into the pane, even for a
+file no renderer has been written for yet.
+
+### The degrade-in-matcher rule
+
+A renderer decides its OWN degrade at match time, not mid-render:
+`match_render_<kind>` checks its required external tool is on PATH as part
+of matching, so a tool-absent decline is never discovered halfway through a
+render (a partially-drawn frame, a crash). Two different degrade floors
+follow from what the file type actually IS:
+
+- **A non-text kind's tool-absent decline reaches `fallback`.** `pdf.sh`,
+  `office.sh` (docx/xlsx), `media.sh`, `sqlite.sh` all wrap genuinely binary
+  formats; when their tool is missing they decline, no earlier kind claims a
+  binary file, and `text` also declines it (binary mime-encoding), so it
+  falls through to the guard - `file(1)` + a bounded `hexyl` dump + an
+  install hint.
+- **A textual kind's tool-absent decline reaches `text`, not `fallback`.**
+  `markdown.sh` (glow absent), `csv.sh` (qsv absent), `json.sh` (jq absent),
+  and `svg.sh` (rsvg-convert/chafa absent - an svg is XML) all wrap content
+  that `file --mime-encoding` reports as text, so when they decline, the
+  `text` renderer downstream claims it instead and pages the raw source via
+  `less` (bat-highlighted if installed). Getting this wrong is an easy
+  documentation bug: a "renderer degrades to the fallback guard" claim for
+  any of these four is factually wrong and worth fixing on sight (see the
+  README's Prerequisites table, corrected in the same pass that added this
+  section).
+
+### Adding a new renderer
+
+A new type is a single-file, additive change:
+
+1. `scripts/renderers/<kind>.sh` with `match_render_<kind>` / `render_<kind>`.
+2. One line: insert `<kind>` into `RENDER_KINDS` in `scripts/lib.sh`, most-specific-first,
+   before `text` and `fallback`.
+3. If the type has a recommended external tool, add an extension -> tool
+   mapping in `render_hint_for_ext` (`scripts/lib.sh`) so a genuinely-absent
+   tool surfaces an install hint when the file lands on `fallback`.
+
+No edits to `preview-pane.sh`, `open-in-viewer.sh`, or the sourcing glob -
+same additive shape as a new handler kind above.
+
 ## Virtual link transport
 
 Herdr plugin link handlers receive only resolved http(s) URLs. A plain path
@@ -221,28 +312,38 @@ preview ───────────plugin pane open─────▶ prev
                                                    ▲
 recents ───────────plugin pane open─────▶ recents-pick pane
                                              └─ exec, same pane/TTY ───────────┘
+                                                   ▲
+find ───────────────plugin pane open────▶ find-pane (fzf + live bat preview)
+                                             └─ Enter: exec, same pane/TTY ───┘
 
 hint ──────────────plugin pane open─────▶ hint-pane (in-place hint overlay)
-     └ scan in a background subshell          ├─ keypress: exec, same pane/TTY ┘
-       (pane read is RPC-safe HERE)           └─ OSC-8 Ctrl+click ─▶ open-link ┘
+     └ scan in a background subshell          ├─ keypress/click ─▶ open-popup.sh
+       (pane read is RPC-safe HERE)           │    (spawn) ─▶ 90% popup pane (preview-pane.sh)
+                                               └─ OSC-8 Ctrl+click ─▶ open-link ┘
 repository URL Ctrl+click ────────────────────────────────▶ preview
 agent status hook ─▶ latest suggestion state ─▶ agent-suggestion ─▶ preview
 
 open-in-viewer ·····herdr socket: send-keys / send-text·····▶ herdr-file-viewer pane (a different plugin)
 ```
 
-`open-in-viewer`, `recents`, and `hint` cannot do interactive work inside
-their action command. They either open a plugin pane or drive an existing
-pane through the herdr socket. `recents-pane.sh` and `hint-pane.sh` `exec`
-`preview-pane.sh` after selection so resolution, rendering, and recents
-recording stay on one path (a directory pick routes into `open-in-viewer.sh`
-instead, so it lands in the real file viewer). Two herdr constraints pin
-this topology: **never open a plugin pane with `--cwd`** (herdr resolves the
-pane's relative manifest command against that cwd, finds nothing, and the
-pane flash-closes; every pane receives its cwd as an env var instead), and
-**never issue a server RPC from inside a server-spawned overlay pane** (it
-deadlocks; the overlay therefore reads two files the action prepared and a
-keypress, nothing else).
+`open-in-viewer`, `recents`, `find`, and `hint` cannot do interactive work
+inside their action command. They either open a plugin pane or drive an
+existing pane through the herdr socket. `recents-pane.sh` and `find-pane.sh`
+`exec` `preview-pane.sh` IN PLACE after selection, so the same pane that ran
+the picker becomes the reader. `hint-pane.sh` instead settles a pick (letter
+key or a plain click, SGR mouse tracking owned by that pane) by `exec`-ing
+`open-popup.sh`, which spawns a FRESH pane at `--placement popup --width 90%
+--height 90%` and execs `preview-pane.sh` there - the hint overlay is for
+choosing, the popup is for reading, so resolution, rendering, and recents
+recording all still stay on one code path, just not always the same pane (a
+directory pick routes into `open-in-viewer.sh` instead, so it lands in the
+real file viewer). Two herdr constraints pin this topology: **never open a
+plugin pane with `--cwd`** (herdr resolves the pane's relative manifest
+command against that cwd, finds nothing, and the pane flash-closes; every
+pane receives its cwd as an env var instead), and **never issue a server RPC
+from inside a server-spawned overlay pane** (it deadlocks; the overlay
+therefore reads two files the action prepared and a keypress, nothing
+else).
 
 ## Hint picker
 
@@ -274,9 +375,10 @@ overlay cannot RPC, so ALL herdr calls live in the action):
 2. It reads the pane's visible text ONCE (`pane read`), strips it, and
    writes the snapshot to a temp file. If the clipboard token is visible in
    that snapshot AND resolves, it opens IMMEDIATELY (directory ->
-   `open-in-viewer`, everything else -> `preview`), no overlay at all - and
-   a stale clipboard can never hijack the key, because the text must be on
-   screen. Otherwise it opens `hint-pane` right away and leaves the scan
+   `open-in-viewer`, everything else -> the popup via `open-popup.sh`), no
+   hint overlay at all - and a stale clipboard can never hijack the key,
+   because the text must be on screen. Otherwise it opens `hint-pane` right
+   away and leaves the scan
    running in a BACKGROUND subshell that writes the ranked token list
    (raw, line-no, precomputed OSC-8 URI, label) atomically.
 3. `hint-pane` (pane, real TTY, zero RPC) paints the dimmed snapshot
@@ -285,9 +387,16 @@ overlay cannot RPC, so ALL herdr calls live in the action):
    Autowrap is off and the frame is clamped to the pane height, so the
    overlay can never scroll and corrupt its own repaint; a token that
    cannot be re-located on its snapshot line stays pickable from a short
-   list under the snapshot. A keypress resolves the chosen token through
-   the real handler registry and routes by mode (`viewer` ->
-   `open-in-viewer.sh`, else `preview-pane.sh`, exec'd in this same pane).
+   list under the snapshot. A pick - a hint keypress OR a plain LEFT-CLICK
+   (the overlay owns its TTY, so it enables SGR mouse tracking and hit-tests
+   the click against each token's recorded row/col span; inserted escapes
+   are zero-width, so columns hold) - resolves the token through the real
+   handler registry and routes by mode: `viewer` -> `open-in-viewer.sh`
+   (file-viewer in its own tab), everything else -> `open-popup.sh`, which
+   spawns herdr's native 90% POPUP running `preview-pane.sh` (spawn-class
+   RPC, safe from inside the overlay - the same precedent as the escalate
+   flow; only blocking queries like `pane read` deadlock). The overlay is
+   for choosing; the popup is for reading.
 
 **The scan/rank/count flow**, entirely inside `pick_scan_text`
 (`scripts/lib.sh`), pure text-in/text-out, no live pane or clipboard of its

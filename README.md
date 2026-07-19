@@ -5,17 +5,17 @@
 [![license: MIT](https://img.shields.io/badge/license-MIT-green)](LICENSE)
 [![GitHub stars](https://img.shields.io/github/stars/dwarvesf/herdr-quicklook?style=flat&logo=github)](https://github.com/dwarvesf/herdr-quicklook/stargazers)
 
-**Open whatever path or URL an agent puts in front of you, without leaving [herdr](https://herdr.dev).** Copy a token (a file path, `path:123`, a bare filename, an http(s) URL), hit one key, and it opens in the right place: an overlay preview pane, the [herdr-file-viewer](https://github.com/smarzban/herdr-file-viewer) tree, or your browser. Supported repository URLs work with Ctrl+click directly; the link overlay makes bare paths and every other detected token Ctrl+clickable too.
+**Open whatever path or URL an agent puts in front of you, without leaving [herdr](https://herdr.dev).** Copy a token (a file path, `path:123`, a bare filename, an http(s) URL), hit one key, and it opens in the right place: the preview popup, the [herdr-file-viewer](https://github.com/smarzban/herdr-file-viewer) tree, or your browser. Supported repository URLs work with Ctrl+click directly; the link overlay makes bare paths and every other detected token Ctrl+clickable too.
 
 Born from a daily annoyance: coding agents print file paths all day (`src/api/handler.go:142`), and reviewing one meant leaving the terminal or retyping the path. With the hint picker the whole loop is two keystrokes: `prefix+v`, then one letter.
 
 A few things that make it more than a pager:
 
 - **A GitHub link opens your local file.** Paste `github.com/org/repo/blob/main/src/x.go#L42` and it opens *your checkout* at line 42, not a browser tab, resolving across worktrees and your other repos.
-- **One key, hints in place.** `prefix+v` dims the pane and overlays a one-letter hint on every openable token, pluck-style, columns never shift. Type the letter (or Ctrl+click the token) and it opens: files in the preview popup, directories in the file-viewer's own tab, URLs in the browser. Repository URLs are also Ctrl+clickable directly in any pane, no overlay needed.
+- **One key, hints in place.** `prefix+v` dims the pane and overlays a one-letter hint on every openable token, pluck-style, columns never shift. Type the letter, or just click the token (a plain click, no Ctrl needed while the hint overlay is up), and it opens: files in the preview popup, directories in the file-viewer's own tab, URLs in the browser. Repository URLs are also Ctrl+clickable directly in any pane, no overlay needed.
 - **An agent can put a file on your screen.** Set `QUICKLOOK_TOKEN` directly, or opt into agent suggestions that scan only output produced during the latest working turn.
-- **Quick look, then commit to it.** Reading in the overlay and want the full tree? One key (`o`) escalates the same file, at the same line, into [herdr-file-viewer](https://github.com/smarzban/herdr-file-viewer).
-- **Or straight into your editor.** `e` opens the same file, at the same line, in `$EDITOR` (config-overridable); the overlay resumes once you close it.
+- **Quick look, then commit to it.** Reading in the popup and want the full tree? One key (`o`) escalates the same file, at the same line, into [herdr-file-viewer](https://github.com/smarzban/herdr-file-viewer).
+- **Or straight into your editor.** `e` opens the same file, at the same line, in `$EDITOR` (config-overridable); the popup resumes once you close it.
 
 ## What it opens
 
@@ -35,7 +35,44 @@ A few things that make it more than a pager:
 
 Resolution runs top-down: exact paths win before any fuzzy matching, and the first hit stops the chain. See [DESIGN.md](DESIGN.md) for how a token kind maps to its handler.
 
-## Renderers (v0.4)
+## The flow, in one picture
+
+```
+                     the pane you are reading
+                               │  prefix+v
+                               ▼
+                  ┌─────────────────────────────┐
+   scan: shape-   │  HINT OVERLAY (choose)      │  every hinted token is
+   first, back-  ─▶  pane dims, yellow one-key  │  also an OSC-8 link
+   ground, ~ms    │  hints land on each token   │
+                  └─────────────┬───────────────┘
+                type its letter │ or PLAIN-CLICK it
+                (copied text visible on screen skips
+                 the overlay and opens immediately)
+                                │ token settled
+        ┌───────────────┬───────┴────────┬─────────────────────┐
+        ▼               ▼                ▼                     ▼
+  file / sha / #ref   directory         URL            visible-but-broken path
+  ┌─────────────┐   file-viewer      browser           fzf FINDER, pre-seeded
+  │ POPUP 90%   │   in its own      (bare domains      with the clipboard
+  │ (read)      │   TAB, cursor      get https://)     (or open it any time:
+  └──────┬──────┘   on the target)                      prefix+/)
+         │  o → file-viewer at this line
+         │  e → $EDITOR at this line      d/u · j/k · / : stock less keys
+         │  D → git diff of this file
+         ▼
+  RENDER REGISTRY (how the popup draws the file, first match wins):
+  md→glow · png/webp/…→chafa · gif→bounded animate · svg→rsvg→chafa ·
+  pdf→poster+text · zip/tar→listing · csv→qsv · json→jq · ipynb/docx→pandoc ·
+  media→ffprobe+poster · sqlite→schema · plist→plutil · text→less+bat ·
+  anything else→file(1)+hexyl guard with an install hint (never raw bytes)
+
+  resolution, when a token is relative (first hit wins):
+  $PWD → this repo's worktrees → each QUICKLOOK_ROOTS →
+  every root's repos (workspace sweep) → repo filename fuzzy (fzf on ties)
+```
+
+## Render types
 
 Once a token resolves to a local file, a second registry decides HOW to draw it: the closest-matching type gets a real renderer, and anything else lands on the always-on fallback below - the one guarantee that a preview never dumps a file's raw bytes into your terminal.
 
@@ -92,19 +129,19 @@ Reload with `herdr server reload-config`.
 above; `preview` (opens the clipboard token directly, no scan) is still a
 valid action id if you'd rather bind that directly instead.
 
-## Keys in the preview overlay
+## Keys in the preview popup
 
 | Key | Does |
 |---|---|
-| `q` or `Esc Esc` | Close the overlay (a bare Esc cannot coexist with arrow-key scrolling in less, so quit is double-Esc) |
-| `o` (or `v`) | **Escalate**: close the overlay and open this file, at the same line, in the herdr-file-viewer pane (when that plugin is installed) |
-| `e` | **Edit**: open this file, at the same line, in `$EDITOR` (config-overridable, default `zed --wait`); the overlay resumes when the editor exits |
+| `q` or `Esc Esc` | Close the popup (a bare Esc cannot coexist with arrow-key scrolling in less, so quit is double-Esc) |
+| `o` (or `v`) | **Escalate**: close the popup and open this file, at the same line, in the herdr-file-viewer pane (when that plugin is installed) |
+| `e` | **Edit**: open this file, at the same line, in `$EDITOR` (config-overridable, default `zed --wait`); the popup resumes when the editor exits |
 | `D` | **Diff** (shift-d): open a nested pager on `git diff` for this file (delta-colored if installed, else git's own color); `q` closes it and resumes the file view. A clean file just prints a no-changes notice. Lowercase `d` stays less's half-page-down scroll |
 | `d` / `u`, `j` / `k`, `Space` / `b`, `g` / `G` | less's own navigation: half-page down/up, line down/up, page forward/back, top/bottom |
 | `/`, `n`, `N` | Search inside the file |
 | arrows / PgUp / PgDn | Scroll |
 
-The overlay is sized by herdr; it closes itself after handing a URL to the browser.
+The popup is sized by herdr; it closes itself after handing a URL to the browser.
 
 ## Recents (`prefix+shift+v`)
 
@@ -114,7 +151,7 @@ The log lives outside any git repo, at `${XDG_STATE_HOME:-~/.local/state}/herdr-
 
 ## Hint picker (`prefix+v`)
 
-The one picker. Press the binding and the pane re-renders dimmed with a one-letter hint overlaid, pluck-style, on every openable token: the letter replaces the token's first character (bold black on bright yellow), the rest of the token turns yellow, and columns never shift, so you keep the full context of the screen you were reading. Type the letter and the token opens by TYPE: a file in the 90% preview popup (UPPERCASE the letter to open a FULL persistent tab pane instead), a directory in the file-viewer's own tab, a URL in the browser, a SHA through `git show`. `Esc` or `q` cancels.
+The one picker. Press the binding and the pane re-renders dimmed with a one-letter hint overlaid, pluck-style, on every openable token: the letter replaces the token's first character (bold black on bright yellow), the rest of the token turns yellow, and columns never shift, so you keep the full context of the screen you were reading. Type the letter (UPPERCASE it to open a FULL persistent tab pane instead of the popup), or plain-click the token directly (no Ctrl needed - this overlay owns the TTY and reads the click itself), and the token opens by TYPE: a file in the 90% preview popup, a directory in the file-viewer's own tab, a URL in the browser, a SHA through `git show`. `Esc` or `q` cancels.
 
 Every hinted token is also an OSC-8 link on this plugin's `.invalid` sentinel transport, so Ctrl+click opens the same way the letter does. The sentinel URLs are accepted only after a canonical encode/decode check; they are an internal transport, never a network destination.
 
@@ -144,7 +181,7 @@ Optional. Create `.env` in the directory `herdr plugin config-dir herdr-quickloo
 # live under one parent directory.
 QUICKLOOK_ROOTS="$HOME/workspace:$HOME/src"
 
-# Command launched by `e` in the overlay. Precedence: this key > $EDITOR >
+# Command launched by `e` in the popup. Precedence: this key > $EDITOR >
 # "zed --wait". Set it here rather than relying on $EDITOR alone: the herdr
 # server process that launches this pane does not reliably inherit an
 # interactive shell's exported vars.
@@ -201,11 +238,15 @@ already-tagged version.
 
 ## Demo
 
+**`prefix+v` hint-pick to popup** - the hint overlay lands a one-letter hint on every openable token; type the letter (or plain-click it) and it opens in herdr's 90% popup:
+
+![hint flow tour: prefix+v overlays yellow hints on every openable token, a letter pick opens the glow-rendered markdown in the 90% popup, a second pick opens the csv as a qsv table with d/u half-page scroll visible against its 40 rows](demo/hint-flow-tour.gif)
+
 **Ctrl+click bare paths without an upstream change** - every hinted token in the `prefix+v` overlay is an OSC-8 link; a real Ctrl+click opens it locally, and a GitHub blob URL Ctrl+clicks straight into the local checkout from any pane (recorded before the hint consolidation; the flow is the same, the overlay is now the in-place hint picker):
 
 ![linkify: bare pane paths become OSC-8 links, Ctrl-click opens a local preview, and repository URLs route through quicklook directly](demo/linkify.gif)
 
-**Pick anything on screen** - `prefix+v` on a busy pane (real commits, `ls`, a URL) opens the ranked, count-headered pick list; a pick opens in the preview overlay. Plus the negative control: an empty pane and an empty clipboard yield the honest "nothing openable on screen" instead of a crash:
+**Pick anything on screen** - `prefix+v` on a busy pane (real commits, `ls`, a URL) opens the ranked, count-headered pick list; a pick opens in the preview popup (recorded before the hint consolidation; the same ranked scan now runs inside the hint overlay itself, and a settled pick still lands in the popup). Plus the negative control: an empty pane and an empty clipboard yield the honest "nothing openable on screen" instead of a crash:
 
 ![pick anywhere: prefix+v scans a busy pane, shows the count header, opens a pick in the preview overlay; then the negative control, an empty pane yields the honest empty-state message](demo/pick-anywhere.gif)
 
@@ -213,7 +254,7 @@ already-tagged version.
 
 ![tokens tour: path, GitHub blob URL, commit SHA, PR reference, and a directory, all opened from the clipboard](demo/tokens-tour.gif)
 
-**The three in-overlay keys** - `D` (dirty-diff toggle), `e` (edit in `$EDITOR`), `o` (escalate to herdr-file-viewer):
+**The three in-popup keys** - `D` (dirty-diff toggle), `e` (edit in `$EDITOR`), `o` (escalate to herdr-file-viewer):
 
 ![overlay keys tour: d toggles a git diff, e opens $EDITOR, o escalates into herdr-file-viewer](demo/overlay-keys-tour.gif)
 
@@ -224,6 +265,18 @@ already-tagged version.
 **The one-key pluck chain** - herdr-pluck's hint overlay pops, pick a token, quick-look opens it immediately:
 
 ![pluck full flow: hint labels appear over visible tokens, pick one, and it opens with no extra keypress](demo/pluck-full-flow.gif)
+
+**Render types in the popup** - once a token resolves to a local file, the render registry draws it by type. The images story - a png (inline `chafa` ANSI art), a gif, an svg (`rsvg-convert` -> `chafa`), a pdf (page-1 poster + extracted text):
+
+![render types, images tour: png via chafa, gif, svg via rsvg-convert then chafa, pdf page-1 poster plus extracted text](demo/render-images-tour.gif)
+
+The documents story - a markdown file (`glow`), a docx (`pandoc` -> `glow`), a Jupyter notebook (`pandoc`'s ipynb reader -> `glow`):
+
+![render types, documents tour: markdown via glow, docx via pandoc then glow, ipynb via pandoc then glow](demo/render-docs-tour.gif)
+
+The data-and-guard story - a csv (`qsv table`), minified json (`jq`), a sqlite schema (table list + DDL, never a row dump), and the negative control: an unknown/corrupt file that no renderer claims, landing on the always-on fallback (`file(1)` + a `hexyl` dump + an install hint):
+
+![render types, data and fallback tour: csv via qsv, json via jq, sqlite schema, and a corrupt file hitting the always-on file plus hexyl fallback guard with an install hint](demo/render-data-fallback.gif)
 
 Tapes for every recording live in [demo/](demo/), along with the landmines hit re-recording them on macOS.
 
@@ -241,7 +294,7 @@ Everything else is optional, and the plugin degrades instead of failing:
 
 ## Prerequisites
 
-v0.4 renders non-text files (markdown, images, pdf, archives, csv, json, office docs, media, sqlite/plist, and more) in the preview overlay instead of paging raw bytes. Every renderer beyond the hard requirements above is optional and degrades gracefully: a missing tool never crashes the overlay, it falls back to a plainer render (or, at the floor, the always-on `file(1)` + `hexyl` guard) with a one-line install hint.
+v0.4 renders non-text files (markdown, images, pdf, archives, csv, json, office docs, media, sqlite/plist, and more) in the preview popup instead of paging raw bytes. Every renderer beyond the hard requirements above is optional and degrades gracefully: a missing tool never crashes the overlay, it falls back to a plainer render (or, at the floor, the always-on `file(1)` + `hexyl` guard) with a one-line install hint.
 
 ```sh
 ./scripts/install-renderers.sh            # preview only, installs nothing (the default)
@@ -252,10 +305,10 @@ v0.4 renders non-text files (markdown, images, pdf, archives, csv, json, office 
 
 | Tier | Tool | Powers | Without it |
 |---|---|---|---|
-| P1 | [`glow`](https://github.com/charmbracelet/glow) | markdown (`.md`/`.markdown`), and the rendered half of `.ipynb` (via `pandoc`'s markdown conversion) | falls back to the `file(1)`+`hexyl` guard with an install hint |
+| P1 | [`glow`](https://github.com/charmbracelet/glow) | markdown (`.md`/`.markdown`), and the rendered half of `.ipynb` (via `pandoc`'s markdown conversion) | falls back to the plain-text preview (markdown is text), not the guard |
 | P1 | [`chafa`](https://github.com/hpjansson/chafa) | still images (`png`/`jpg`/`jpeg`/`webp`/`bmp`) and animated gif (`.gif`, first-frame still if `--animate` degrades) | images/gif fall back to the `file(1)`+`hexyl` guard with an install hint |
 | P1 | [`hexyl`](https://github.com/sharkdp/hexyl) | the first-KB hexdump in the always-on unknown-binary guard | the guard still shows the `file(1)` type line + install hint, just without the hexdump |
-| P2 | `rsvg-convert` (Homebrew `librsvg`) | svg (`.svg`) -> png -> `chafa` | falls back to the `file(1)`+`hexyl` guard with an install hint |
+| P2 | `rsvg-convert` (Homebrew `librsvg`) | svg (`.svg`) -> png -> `chafa` | falls back to the plain-text preview (an svg is XML text), not the guard |
 | P2 | `pdftoppm` + `pdftotext` (Homebrew `poppler`) | pdf (`.pdf`): first-page image (`pdftoppm` -> `chafa`) plus extracted text | missing `pdftoppm` degrades to `pdftotext`-only text mode; missing both falls back to the `file(1)`+`hexyl` guard with an install hint |
 | P2 | [`qsv`](https://github.com/dathere/qsv) | csv/tsv (`.csv`/`.tsv`) as an aligned table | renders as plain text via `less`, then the guard if even that fails |
 | P2 | [`jq`](https://github.com/jqlang/jq) | minified json (`.json`), pretty-printed | renders as plain text via `less`, then the guard if even that fails |
