@@ -103,6 +103,10 @@ Every hinted token is also an OSC-8 link on this plugin's `.invalid` sentinel tr
 
 Repository URLs (GitHub blob/raw/PR, GitLab blob, Bitbucket source) are ALSO Ctrl+clickable directly in any pane, no overlay needed: narrow link handlers route them through the quicklook resolver, opening a local checkout or `gh pr view` when possible before falling back to the browser.
 
+## Find a file (`prefix+/` suggested)
+
+The `find` action opens an fzf overlay over the repo's tracked files (outside a repo, a bounded `find`), with a live bat preview rendering WHILE you type. Enter opens the pick in the same preview overlay as every other open, so `o`/`e`/`d` keep working; Esc closes. This is the proactive complement to the passive bare-name fallback (a copied ambiguous filename already fzf-picks among its matches).
+
 ## Agent suggestions (opt-in)
 
 Set `QUICKLOOK_AGENT_SUGGESTIONS=notify` to watch herdr's low-volume `pane.agent_status_changed` event. When an agent starts working, quicklook records a transcript baseline. When it reaches `done` or `idle`, only text added during that turn is scanned; the highest-confidence token is saved as the latest suggestion and shown in a herdr notification. The `agent-suggestion` action opens it later using the producing pane's cwd.

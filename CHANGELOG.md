@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+- New `find` action: fzf over tracked files with live bat preview; Enter
+  renders the pick through the preview overlay.
+
 - The `hint` picker replaces `pick`, `pluck-chain`, and the separate `linkify`
   overlay: one pluck-style in-place overlay (dim pane, one-letter hints on the
   token's first character, bright-yellow `#fffd01` badges), keyboard and

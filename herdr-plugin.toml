@@ -69,6 +69,19 @@ title = "Hint-pick anything openable on screen"
 description = "Overlay every openable token on screen with a one-key hint label; press the key (or Ctrl+click the row) to resolve + open it immediately. No fzf, no herdr-pluck."
 command = ["bash", "scripts/hint.sh"]
 
+[[panes]]
+id = "find-pane"
+title = "Find"
+placement = "overlay"
+command = ["bash", "scripts/find-pane.sh"]
+
+[[actions]]
+id = "find"
+platforms = ["linux", "macos"]
+title = "Fuzzy-find a file to quick-look"
+description = "fzf over the repo's tracked files with a live bat preview; Enter renders the pick in the preview overlay."
+command = ["bash", "scripts/find.sh"]
+
 [[actions]]
 id = "open-link"
 platforms = ["linux", "macos"]
