@@ -138,6 +138,7 @@ set -- plugin pane open \
   --placement overlay \
   --focus \
   --env "QUICKLOOK_VIEWER_OK=$viewer_ok" \
+  --env "QUICKLOOK_DEBUG_LOG=${QUICKLOOK_DEBUG_LOG:-}" \
   --env "QUICKLOOK_HINT_TOKENS_FILE=$tokens_file" \
   --env "QUICKLOOK_HINT_SNAP_FILE=$snap_file"
 
