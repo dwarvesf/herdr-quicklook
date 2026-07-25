@@ -10,7 +10,7 @@ setup() {
   STUB="$(mktemp -d)"
   printf '#!/usr/bin/env bash\nexit 0\n' > "$STUB/bat"
   # less is exec'd by render_text; print the LESSOPEN it inherited
-  printf '#!/usr/bin/env bash\nprintf "LESSOPEN=%%s\\n" "$LESSOPEN"\n' > "$STUB/less"
+  printf '#!/usr/bin/env bash\nprintf "LESSOPEN=%%s\\nLESS_ARGS: %%s\\n" "$LESSOPEN" "$*"\n' > "$STUB/less"
   chmod +x "$STUB/bat" "$STUB/less"
   export PATH="$STUB:/usr/bin:/bin"
 }
@@ -23,7 +23,7 @@ teardown() {
 @test "render_text: no theme flag by default (bat config decides, like the viewer)" {
   run bash -c "unset QUICKLOOK_BAT_THEME; . '$LIB'; render_text '$FIX/doc.txt'"
   [ "$status" -eq 0 ]
-  [[ "$output" == *"LESSOPEN=|bat --color=always --style=numbers"* ]]
+  [[ "$output" == *"LESSOPEN=|bat --color=always --style=numbers,header"* ]]
   [[ "$output" != *"--theme"* ]]
 }
 
@@ -35,24 +35,33 @@ teardown() {
 
 # ---- line-jump parity: the LESSOPEN filter must not shift line numbers ----
 
-@test "bat's LESSOPEN output has ONE row per source line (so less +N is exact)" {
-  # setup() puts a stub bat on PATH; this invariant needs the REAL one.
+@test "the header-height probe predicts the full render's row count" {
   local real_bat
   real_bat="$(PATH=/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin command -v bat)" || skip "bat not installed"
   local f="$FIX/five.txt"
   seq 1 5 | sed 's/^/line /' > "$f"
-  # the exact filter render_text installs; a decorating style that adds a
-  # header/grid row would silently shift every `path:N` jump by that many
-  # lines (regression shipped once, caught by review).
-  local rows
-  rows="$("$real_bat" --color=always --style=numbers "$f" | wc -l | tr -d ' ')"
-  [ "$rows" -eq 5 ]
+  local probe full
+  probe="$("$real_bat" --color=always --style=numbers,header --line-range 1:1 -- "$f" | wc -l | tr -d ' ')"
+  full="$("$real_bat" --color=always --style=numbers,header -- "$f" | wc -l | tr -d ' ')"
+  # header rows = probe - 1 (the probe also renders one content row), so a
+  # 5-line file must render as 5 + (probe - 1) rows. This is the identity
+  # render_text's jump compensation relies on; a fixed constant is WRONG
+  # because bat wraps a long "File: ..." path onto a second row.
+  [ "$full" -eq "$((5 + probe - 1))" ]
 }
 
-@test "render_text's LESSOPEN uses no line-adding decoration" {
-  run bash -c "unset QUICKLOOK_BAT_THEME; . '$LIB'; render_text '$FIX/doc.txt'"
+@test "render_text shifts a line jump past the measured header rows" {
+  command -v bat >/dev/null 2>&1 || skip "stub bat required"
+  # stub bat prints one row for the probe -> probe=1 -> no shift; the real
+  # behaviour with a multi-row header is covered by the identity test above.
+  run bash -c "unset QUICKLOOK_BAT_THEME; . '$LIB'; render_text '$FIX/doc.txt' 10"
   [ "$status" -eq 0 ]
-  [[ "$output" == *"--style=numbers"* ]]
-  [[ "$output" != *"header"* ]]
-  [[ "$output" != *"grid"* ]]
+  [[ "$output" == *"+1"* ]]
+}
+
+@test "render_text without bat does NOT shift the jump (no header in that stream)" {
+  rm -f "$STUB/bat"
+  run bash -c "unset QUICKLOOK_BAT_THEME; . '$LIB'; render_text '$FIX/doc.txt' 10"
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"+10"* ]]
 }

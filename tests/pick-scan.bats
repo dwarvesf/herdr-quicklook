@@ -592,3 +592,23 @@ SCRIPT
   header="$(pick_scan_text < <(printf '%s\n' "${names[@]}") | pick_count_header)"
   [ "$header" = "120 on screen · 120 path" ]
 }
+
+# ---- call-shape and assignment prefixes (agent/shell output on screen) ----
+
+@test "pick_scan_text: Update(path) yields the path, not the word Update" {
+  run pick_scan_text <<<'Update(sub/inrepo.md) touched it'
+  [[ "$output" == *"$(printf 'sub/inrepo.md\tpath\t1')"* ]]
+  [[ "$output" != *"Update("* ]]
+}
+
+@test "pick_scan_text: a shell assignment yields the value, not the VAR= prefix" {
+  run pick_scan_text <<<'S=sub/inrepo.md'
+  [[ "$output" == *"$(printf 'sub/inrepo.md\tpath\t1')"* ]]
+  [[ "$output" != *"S="* ]]
+}
+
+@test "pick_scan_text: a bare word with parens but no closer is left alone" {
+  # negative control: only a full Name(...) shape is unwrapped
+  run pick_scan_text <<<'Update(sub/inrepo.md'
+  [[ "$output" != *"$(printf 'Update\t')"* ]]
+}

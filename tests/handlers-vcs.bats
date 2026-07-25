@@ -1,6 +1,7 @@
 #!/usr/bin/env bats
 # Tests for scripts/handlers/vcs.sh (SG-02, vcs-tokens): a bare commit SHA ->
-# `git show`, a `#123` ref or a GitHub PR URL -> `gh pr view`, mode=command.
+# `git show`, a `#123` ref or a GitHub PR URL -> pr-view.sh (gh pr view with
+# the body rendered as markdown), mode=command.
 # Same style as registry.bats: source lib.sh directly and call
 # match_vcs/handle_vcs (they communicate through RESOLVED_* globals), not
 # `run` in a subshell, except where a test deliberately executes the built
@@ -138,24 +139,22 @@ teardown() {
   # for a bogus SHA instead of erroring").
 }
 
-@test "handle_vcs: #123 builds the exact argv gh pr view 123" {
+@test "handle_vcs: #123 builds the exact argv bash pr-view.sh 123" {
   handle_vcs "#123"
   [ "$RESOLVED_MODE" = "command" ]
-  [ "${#RESOLVED_CMD[@]}" -eq 4 ]
-  [ "${RESOLVED_CMD[0]}" = "gh" ]
-  [ "${RESOLVED_CMD[1]}" = "pr" ]
-  [ "${RESOLVED_CMD[2]}" = "view" ]
-  [ "${RESOLVED_CMD[3]}" = "123" ]
+  [ "${#RESOLVED_CMD[@]}" -eq 3 ]
+  [ "${RESOLVED_CMD[0]}" = "bash" ]
+  [[ "${RESOLVED_CMD[1]}" == *"/pr-view.sh" ]]
+  [ "${RESOLVED_CMD[2]}" = "123" ]
 }
 
-@test "handle_vcs: a GitHub PR URL builds gh pr view <url>" {
+@test "handle_vcs: a GitHub PR URL builds bash pr-view.sh <url>" {
   handle_vcs "https://github.com/dwarvesf/herdr-quicklook/pull/42"
   [ "$RESOLVED_MODE" = "command" ]
-  [ "${#RESOLVED_CMD[@]}" -eq 4 ]
-  [ "${RESOLVED_CMD[0]}" = "gh" ]
-  [ "${RESOLVED_CMD[1]}" = "pr" ]
-  [ "${RESOLVED_CMD[2]}" = "view" ]
-  [ "${RESOLVED_CMD[3]}" = "https://github.com/dwarvesf/herdr-quicklook/pull/42" ]
+  [ "${#RESOLVED_CMD[@]}" -eq 3 ]
+  [ "${RESOLVED_CMD[0]}" = "bash" ]
+  [[ "${RESOLVED_CMD[1]}" == *"/pr-view.sh" ]]
+  [ "${RESOLVED_CMD[2]}" = "https://github.com/dwarvesf/herdr-quicklook/pull/42" ]
 }
 
 # ---- non-hex token falls through to the next handler (checklist case) ----
@@ -197,8 +196,10 @@ teardown() {
 @test "argv-shape control: a flag-injection value through the #-branch still lands as ONE arg" {
   handle_vcs '#123 --upload-pack=/tmp/evil'
   [ "$RESOLVED_MODE" = "command" ]
-  [ "${#RESOLVED_CMD[@]}" -eq 4 ]
-  [ "${RESOLVED_CMD[3]}" = '123 --upload-pack=/tmp/evil' ]
+  # bash <pr-view.sh> <ref>: the payload stays ONE argv element, so it can
+  # never be read as a flag by the program the script runs.
+  [ "${#RESOLVED_CMD[@]}" -eq 3 ]
+  [ "${RESOLVED_CMD[2]}" = '123 --upload-pack=/tmp/evil' ]
 }
 
 # ---- real execution: functional correctness + the security proof ----
@@ -250,7 +251,7 @@ teardown() {
 @test "registry: a GitHub PR URL dispatches to vcs (mode=command), not url (mode=browser)" {
   resolve_any_token "https://github.com/dwarvesf/herdr-quicklook/pull/42"
   [ "$RESOLVED_MODE" = "command" ]
-  [ "${RESOLVED_CMD[0]}" = "gh" ]
+  [ "${RESOLVED_CMD[0]}" = "bash" ]
 }
 
 @test "registry: a bare SHA dispatches to vcs end to end through resolve_any_token" {
@@ -262,7 +263,7 @@ teardown() {
 @test "registry: a #123 hashref dispatches to vcs end to end through resolve_any_token" {
   resolve_any_token "#7"
   [ "$RESOLVED_MODE" = "command" ]
-  [ "${RESOLVED_CMD[*]}" = "gh pr view 7" ]
+  [ "${RESOLVED_CMD[0]}" = "bash" ] && [ "${RESOLVED_CMD[2]}" = "7" ] && [ "${#RESOLVED_CMD[@]}" -eq 3 ]
 }
 
 @test "registry: a generic non-github https URL still resolves as mode=browser (reorder did not regress url.sh)" {
@@ -285,4 +286,41 @@ teardown() {
 @test "vcs.sh exports match_vcs and handle_vcs" {
   declare -F match_vcs >/dev/null
   declare -F handle_vcs >/dev/null
+}
+
+# ---- a SHA that lives in ANOTHER repo (the pane's cwd does not have it) ----
+
+@test "handle_vcs: a SHA from a sibling repo resolves against THAT repo" {
+  local ws sib here
+  ws="$(cd "$(mktemp -d)" && pwd -P)"
+  mkdir -p "$ws/sib" "$ws/here"
+  sib="$ws/sib"; here="$ws/here"
+  git -C "$sib" init -q -b main
+  printf 'x\n' > "$sib/f.txt"
+  git -C "$sib" add -A
+  git -C "$sib" -c user.email=t@t -c user.name=t commit -qm fixture
+  git -C "$here" init -q -b main
+  printf 'y\n' > "$here/g.txt"
+  git -C "$here" add -A
+  git -C "$here" -c user.email=t@t -c user.name=t commit -qm other
+  local sha
+  sha="$(git -C "$sib" log --format=%h -1)"
+
+  cd "$here"
+  QUICKLOOK_ROOTS="$ws"
+  handle_vcs "$sha"
+  # without the sweep this would be a bare `git show` in $here, which
+  # answers "fatal: ambiguous argument" instead of rendering the commit
+  [ "${RESOLVED_CMD[0]}" = "git" ]
+  [ "${RESOLVED_CMD[1]}" = "-C" ]
+  [ "${RESOLVED_CMD[2]}" = "$sib" ]
+  cd /
+  rm -rf "$ws"
+}
+
+@test "handle_vcs: a PR ref renders its body as markdown by default" {
+  handle_vcs '#123'
+  [ "${RESOLVED_CMD[0]}" = "bash" ]
+  [[ "${RESOLVED_CMD[1]}" == *"/pr-view.sh" ]]
+  [ "${RESOLVED_CMD[2]}" = "123" ]
 }

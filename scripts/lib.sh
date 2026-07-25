@@ -1321,6 +1321,18 @@ pick_scan_text() {
             s = substr(s, 2, length(s) - 2)
           }
         }
+        # Call-shape prefix: agent output writes `Update(~/a/b.sh)`,
+        # `Read(path)`, `Bash(cmd)`. The span carries BOTH parens so the
+        # unmatched rules below never fire, and the whole thing is one
+        # unopenable token whose hint lands on the `U`. Keep the inside.
+        if (match(s, /^[A-Za-z_][A-Za-z0-9_.-]*\(/) && substr(s, length(s), 1) == ")") {
+          s = substr(s, RLENGTH + 1, length(s) - RLENGTH - 1)
+        }
+        # Shell assignment prefix: `S=/private/tmp/...` hints on the `S`
+        # and resolves nothing. Keep the value.
+        if (match(s, /^[A-Za-z_][A-Za-z0-9_]*=/)) {
+          s = substr(s, RLENGTH + 1)
+        }
         # UNMATCHED wrapper: prose like "(assets/style.json copied ...)"
         # whitespace-splits the opener onto the span with its closer words
         # away, so the matched rule above never fires. An opener whose
