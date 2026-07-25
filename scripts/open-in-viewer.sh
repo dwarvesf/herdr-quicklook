@@ -92,24 +92,24 @@ if resolve_any_token "$raw"; then
 fi
 [ -z "${target:-}" ] && { notify "not found: $raw"; exit 0; }
 
-# The viewer roots at its launch cwd's repo. A target inside the focused
-# repo reuses the idempotent tab action; a target OUTSIDE it (a cockpit row
-# pointing into a sibling repo) re-roots a fresh viewer tab at the TARGET's
-# own repo via `plugin pane open --cwd` instead of refusing. The root itself
-# is inside its own tree (rel stays empty: the viewer opens rooted there,
-# no goto needed).
+# The viewer ALWAYS roots at the focused pane's repo and cannot be pointed
+# anywhere else. Verified live against herdr 0.7.5 + file-viewer 1.14.0:
+#   - `plugin pane open --cwd <dir>` does not re-root it, and actively
+#     BREAKS the spawn: the viewer's manifest pane command is the relative
+#     `./target/release/herdr-file-viewer`, which herdr resolves against
+#     that --cwd ("Unable to spawn <dir>/./target/release/... does not
+#     exist" in herdr-server.log).
+#   - an injected `--env HERDR_PLUGIN_CONTEXT_JSON` is overridden by herdr's
+#     own context, which reports the FOCUSED pane's cwd.
+#   - the calling process's own cwd is ignored for the same reason.
+# So a target outside this repo goes to the preview popup, which renders any
+# path from anywhere (a directory gets its tree listing there). Do not
+# reintroduce a --cwd re-root: it cannot work until the viewer's pane
+# command is absolute.
 root="$(git rev-parse --show-toplevel 2>/dev/null)"
-viewer_cwd=""
 if [ -z "$root" ] || { [ "$target" != "$root" ] && [[ "$target" != "$root"/* ]]; }; then
-  tdir="$target"
-  [ -d "$tdir" ] || tdir="${target%/*}"
-  root="$(git -C "$tdir" rev-parse --show-toplevel 2>/dev/null)"
-  [ -z "$root" ] && root="$tdir"
-  viewer_cwd="$root"
-  # Scope just widened silently otherwise: an on-screen token is about to
-  # drive a navigable viewer OUTSIDE the repo the user is standing in, so
-  # say where it re-rooted (security-lens finding, session review).
-  notify "viewer re-rooted at $root (outside this repo)"
+  notify "outside this repo: the viewer roots here, opening the preview instead"
+  exec bash "$script_dir/open-preview.sh" "$raw"
 fi
 rel="${target#"$root"/}"
 [ "$rel" = "$target" ] && rel=""
@@ -125,17 +125,8 @@ esac
 # existing viewer tab instead of opening twice): a vertical split would
 # disrupt the origin tab's layout. After the action, focus lands on the
 # viewer pane; poll `pane current` until its label reads "Files".
-# Cross-repo targets bypass the idempotent action on purpose: an existing
-# viewer tab is rooted at the WRONG repo, so a fresh tab is opened rooted
-# at the target's repo (the viewer resolves its tree root from the cwd).
-if [ -n "$viewer_cwd" ]; then
-  "$herdr_bin" plugin pane open --plugin herdr-file-viewer --entrypoint file-viewer \
-    --placement tab --focus --cwd "$viewer_cwd" >/dev/null 2>&1 \
-    || { notify "file viewer did not open (cross-repo)"; exit 1; }
-else
-  "$herdr_bin" plugin action invoke open-file-viewer-tab --plugin herdr-file-viewer >/dev/null 2>&1 \
-    || { notify "herdr-file-viewer is not installed"; exit 1; }
-fi
+"$herdr_bin" plugin action invoke open-file-viewer-tab --plugin herdr-file-viewer >/dev/null 2>&1 \
+  || { notify "herdr-file-viewer is not installed"; exit 1; }
 pid=""
 for _ in $(seq 1 20); do
   pid="$("$herdr_bin" pane current 2>/dev/null | jq -r '.result.pane.pane_id // empty' 2>/dev/null)"

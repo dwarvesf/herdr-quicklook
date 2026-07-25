@@ -2,6 +2,14 @@
 
 ## Unreleased
 
+- Reverted the cross-repo viewer re-root: it could never work. The viewer's
+  manifest pane command is relative, so `pane open --cwd <dir>` made herdr
+  look for its binary under that dir and the spawn failed outright; an
+  injected context JSON is overridden by herdr, and the caller's cwd is
+  ignored. The viewer always roots at the focused pane's repo. A target
+  outside it now goes to the preview popup (which renders any path) with a
+  notice, instead of a failed spawn.
+
 - A DIRECTORY picked from the hint overlay opens the real file viewer again
   instead of a tree listing in the popup. The herdr server often runs with a
   minimal PATH, so a bare `herdr` is unreachable from the panes and actions
