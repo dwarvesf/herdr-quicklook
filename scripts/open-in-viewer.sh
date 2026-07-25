@@ -103,6 +103,10 @@ if [ -z "$root" ] || { [ "$target" != "$root" ] && [[ "$target" != "$root"/* ]];
   root="$(git -C "$tdir" rev-parse --show-toplevel 2>/dev/null)"
   [ -z "$root" ] && root="$tdir"
   viewer_cwd="$root"
+  # Scope just widened silently otherwise: an on-screen token is about to
+  # drive a navigable viewer OUTSIDE the repo the user is standing in, so
+  # say where it re-rooted (security-lens finding, session review).
+  notify "viewer re-rooted at $root (outside this repo)"
 fi
 rel="${target#"$root"/}"
 [ "$rel" = "$target" ] && rel=""

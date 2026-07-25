@@ -138,6 +138,22 @@ SH
   [[ "$output" == *"-s auto"* ]]
 }
 
+@test "render_markdown: always passes an explicit -w width to glow" {
+  stub_with_glow
+  run render_markdown "$FIX/doc.md"
+  [ "$status" -eq 0 ]
+  [[ "$output" =~ -w\ [0-9]+ ]]
+}
+
+@test "render_markdown: -w carries the measured TTY width (stubbed tput)" {
+  stub_with_glow
+  printf '#!/usr/bin/env bash\nprintf "132\\n"\n' > "$STUB/tput"
+  chmod +x "$STUB/tput"
+  run render_markdown "$FIX/doc.md"
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"-w 132"* ]]
+}
+
 # ---- render_any dispatch: glow-present renders, glow-absent degrades ----
 
 @test "render_any: glow present - a .md file dispatches to the markdown renderer" {

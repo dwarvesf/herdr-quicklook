@@ -33,6 +33,9 @@ if [ "\$1" = "plugin" ] && [ "\$2" = "action" ] && [ "\$3" = "list" ]; then
   [ "\${HERDR_VIEWER_INSTALLED:-0}" = "1" ] && exit 0
   exit 1
 fi
+if [ "\$1" = "plugin" ] && [ "\$2" = "pane" ] && [ "\$3" = "open" ]; then
+  [ "\${HERDR_PANE_OPEN_FAIL:-0}" = "1" ] && exit 1
+fi
 exit 0
 HERDR
   chmod +x "$STUB/herdr"
@@ -211,4 +214,30 @@ teardown() {
   grep -qF -- "--cwd $FIX/sibling" "$HLOG"
   grep -qF "pane send-text STUBPANE docs/note.md" "$HLOG"
   grep -qF "pane send-keys STUBPANE Enter" "$HLOG"
+  # the re-root is announced, never silent (scope widened outside the repo)
+  grep -q "notification show quicklook --body viewer re-rooted at" "$HLOG"
+}
+
+@test "a sibling-repo file WITH a line number re-roots and sends the :N goto" {
+  mkdir -p "$FIX/sibling/docs"
+  git -C "$FIX/sibling" init -q -b main 2>/dev/null || true
+  printf 'x\ny\nz\n' > "$FIX/sibling/docs/lined.md"
+  export HERDR_VIEWER_INSTALLED=1
+  export QUICKLOOK_TOKEN="$FIX/sibling/docs/lined.md:7"
+  run bash "$VIEWER"
+  [ "$status" -eq 0 ]
+  grep -qF -- "--cwd $FIX/sibling" "$HLOG"
+  grep -qF "pane send-text STUBPANE docs/lined.md" "$HLOG"
+  grep -qF "pane send-text STUBPANE :" "$HLOG"
+  grep -qF "pane send-text STUBPANE 7" "$HLOG"
+}
+
+@test "cross-repo re-root: a failing pane open notifies and exits 1" {
+  export HERDR_VIEWER_INSTALLED=1
+  export HERDR_PANE_OPEN_FAIL=1
+  export QUICKLOOK_TOKEN="$FIX/outside/adir"
+  run bash "$VIEWER"
+  [ "$status" -eq 1 ]
+  grep -q "notification show quicklook --body file viewer did not open (cross-repo)" "$HLOG"
+  ! grep -q "pane send-text" "$HLOG"
 }

@@ -18,7 +18,9 @@ script_dir="$(cd "$(dirname "${BASH_SOURCE[0]:-$0}")" && pwd)"
 # shellcheck disable=SC1091
 . "$script_dir/lib.sh"
 
-load_config
+# env only: this pane resolves nothing itself; the open step execs a
+# script that runs the full load_config (roots) in the child anyway.
+load_config_env
 
 # Enter the origin repo (forwarded as env, never --cwd: --cwd flash-closes
 # the pane) so a relative recents entry resolves against the right repo.

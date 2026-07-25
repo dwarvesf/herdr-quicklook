@@ -144,3 +144,9 @@ SH
   [ "$status" -eq 0 ]
   grep -qx -- '-C' "$JQ_ARGV_FILE"
 }
+
+@test "render_command_in_pager: exports CLICOLOR_FORCE=1 to the renderer subprocess" {
+  run bash -c ". '$LIB'; render_command_in_pager bash -c 'printf \"CF=%s\n\" \"\${CLICOLOR_FORCE:-unset}\"'"
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"CF=1"* ]]
+}

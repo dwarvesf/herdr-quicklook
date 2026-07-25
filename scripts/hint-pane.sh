@@ -47,8 +47,10 @@ cleanup() {
   [ -n "$snap_file" ] && rm -f "$snap_file" 2>/dev/null
 }
 
+# -r passes on /dev/tty even with no controlling terminal (the open is what
+# fails, "Device not configured"), so probe by actually opening it.
 tty_in=/dev/tty
-[ -r "$tty_in" ] || tty_in=/dev/stdin
+{ : <"$tty_in"; } 2>/dev/null || tty_in=/dev/stdin
 
 wait_close() {
   printf '%s\n\n(press any key to close)' "$*"

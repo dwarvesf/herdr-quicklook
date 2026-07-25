@@ -38,9 +38,8 @@ render_text() {
     # --theme flag ONLY when explicitly set. style=numbers,header: the
     # viewer's numbers gutter, plus a filename header standing in for the
     # viewer's own title UI.
-    local theme_flag=""
-    [ -n "${QUICKLOOK_BAT_THEME:-}" ] && theme_flag="--theme=${QUICKLOOK_BAT_THEME} "
-    export LESSOPEN="|bat --color=always ${theme_flag}--style=numbers,header %s"
+    LESSOPEN="|bat --color=always $(_bat_theme_flag)--style=numbers,header %s"
+    export LESSOPEN
     exec less -R "${lesskey_args[@]}" ${line:++$line} "$target"
   fi
   exec less -N "${lesskey_args[@]}" ${line:++$line} "$target"

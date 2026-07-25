@@ -17,7 +17,9 @@ script_dir="$(cd "$(dirname "${BASH_SOURCE[0]:-$0}")" && pwd)"
 # shellcheck source=scripts/lib.sh
 . "$script_dir/lib.sh"
 
-load_config
+# env only: this runs on every `e` keypress and reads QUICKLOOK_EDITOR,
+# never roots; augment_roots' git+herdr forks would be pure latency here.
+load_config_env
 
 line=""
 file=""
