@@ -290,6 +290,32 @@ load_config_env() {
   [ -n "$dir" ] && [ -f "$dir/.env" ] && . "$dir/.env"
 }
 
+# viewer_root -> herdr-file-viewer's plugin root on stdout, rc 1 if the
+# plugin is not installed. augment_roots (load_config) already captured it
+# from its own plugin-list fork; the query is only the fallback for callers
+# that never ran load_config (tests sourcing lib.sh directly).
+viewer_root() {
+  local vroot="${QUICKLOOK_VIEWER_ROOT:-}"
+  if [ -z "$vroot" ]; then
+    vroot="$("$herdr_bin" plugin list --json 2>/dev/null \
+      | jq -r '.result.plugins[] | select(.plugin_id == "herdr-file-viewer") | .plugin_root // empty' 2>/dev/null)"
+  fi
+  [ -n "$vroot" ] || return 1
+  printf '%s' "$vroot"
+}
+
+# viewer_bin -> the file-viewer's EXECUTABLE on stdout, rc 1 when absent.
+# Launching it by absolute path is what lets a viewer be rooted anywhere:
+# the manifest's own pane command is relative, so `plugin pane open` can
+# only ever root at the focused pane (see open-in-viewer.sh's header).
+viewer_bin() {
+  local vroot bin
+  vroot="$(viewer_root)" || return 1
+  bin="$vroot/target/release/herdr-file-viewer"
+  [ -x "$bin" ] || return 1
+  printf '%s' "$bin"
+}
+
 # _bat_theme_flag -> "--theme=<name> " (trailing space) when
 # QUICKLOOK_BAT_THEME is set, else "". Shared by text.sh's LESSOPEN and
 # find-pane.sh's fzf preview so the viewer-parity rule (no flag by default,

@@ -2,6 +2,15 @@
 
 ## Unreleased
 
+- A folder picked anywhere now opens in the file viewer, rooted at that
+  folder, even outside the current repo. The plugin's own pane action can
+  only ever root at the focused pane, so an outside target instead gets a
+  plain tab created at it (`tab create --cwd`) with the viewer's binary run
+  in it by absolute path; herdr injects no plugin context there, so the
+  viewer roots at its own cwd. A file+line jump rides the viewer's
+  `HERDR_FILE_VIEWER_OPEN` launch target, so that path needs no keystroke
+  injection. Falls back to the preview when the viewer binary is not built.
+
 - Reverted the cross-repo viewer re-root: it could never work. The viewer's
   manifest pane command is relative, so `pane open --cwd <dir>` made herdr
   look for its binary under that dir and the spawn failed outright; an
