@@ -9,6 +9,13 @@ setup() {
   # shellcheck disable=SC1090
   . "$LIB"
 
+  # This suite keeps the REAL PATH (it needs real pandoc), so the style
+  # lookup would find the host's real herdr-file-viewer palette and leak
+  # its plugin-root path into the glow argv echo the content assertions
+  # grep. Pin the style to keep the suite hermetic; style selection has
+  # its own tests in renderers-markdown.bats.
+  export QUICKLOOK_GLOW_STYLE=auto
+
   FIX="$(cd "$(mktemp -d)" && pwd -P)"
   # A real docx, built by pandoc itself (round-trips cleanly - verified
   # live).

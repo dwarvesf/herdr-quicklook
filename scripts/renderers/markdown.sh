@@ -27,6 +27,28 @@ match_render_markdown() {
 # formatter-piped renderer. `line` is accepted for signature parity with
 # every other render_<kind> but unused - glow has no line-jump, so a
 # best-effort render (not an error) is the contract here.
+# _markdown_glow_style -> the value for glow's -s flag, on stdout.
+# Precedence: QUICKLOOK_GLOW_STYLE (a glow style name or a JSON style file)
+# > herdr-file-viewer's bundled palette when that plugin is installed (so
+# the preview overlay and the viewer render markdown identically) > auto.
+# The viewer ships its palette at assets/markdown-style.json and treats it
+# as a trusted glow argument; pointing our glow at the same file is the
+# whole "pick up the viewer's highlighting" feature.
+_markdown_glow_style() {
+  if [ -n "${QUICKLOOK_GLOW_STYLE:-}" ]; then
+    printf '%s' "$QUICKLOOK_GLOW_STYLE"
+    return 0
+  fi
+  local vroot
+  vroot="$("${HERDR_BIN_PATH:-herdr}" plugin list --json 2>/dev/null \
+    | jq -r '.result.plugins[] | select(.plugin_id == "herdr-file-viewer") | .plugin_root // empty' 2>/dev/null)"
+  if [ -n "$vroot" ] && [ -f "$vroot/assets/markdown-style.json" ]; then
+    printf '%s' "$vroot/assets/markdown-style.json"
+    return 0
+  fi
+  printf 'auto'
+}
+
 render_markdown() {
   local target="$1" cols
   # glow's stdout is a PIPE inside render_command_in_pager, so its auto
@@ -34,5 +56,5 @@ render_markdown() {
   # than 80 then double-wrap into ragged orphan fragments. stdout here is
   # still the pane's TTY, so measure it and pass the width explicitly.
   cols="$(tput cols 2>/dev/null)" || cols=80
-  render_command_in_pager glow -s auto -w "${cols:-80}" -- "$target"
+  render_command_in_pager glow -s "$(_markdown_glow_style)" -w "${cols:-80}" -- "$target"
 }

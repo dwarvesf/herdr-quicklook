@@ -9,6 +9,11 @@ setup() {
   # shellcheck disable=SC1090
   . "$LIB"
 
+  # Same hermetic pin as renderers-office.bats: this suite keeps the real
+  # PATH, so the viewer-palette lookup would leak the host's plugin-root
+  # path into the glow argv echoes.
+  export QUICKLOOK_GLOW_STYLE=auto
+
   FIX="$(cd "$(mktemp -d)" && pwd -P)"
   cat > "$FIX/t.ipynb" <<'JSON'
 {

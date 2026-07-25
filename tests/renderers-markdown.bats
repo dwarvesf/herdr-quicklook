@@ -102,6 +102,42 @@ SH
   [[ "$output" == *"GLOW_ARGS:"* ]]
 }
 
+@test "render_markdown: QUICKLOOK_GLOW_STYLE overrides the glow style" {
+  stub_with_glow
+  QUICKLOOK_GLOW_STYLE=dracula run render_markdown "$FIX/doc.md"
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"-s dracula"* ]]
+}
+
+@test "render_markdown: picks up herdr-file-viewer's bundled palette when installed" {
+  stub_with_glow
+  # fake herdr + jq answering the plugin-root lookup, and a palette file at
+  # the viewer's documented asset path.
+  mkdir -p "$STUB/vroot/assets"
+  printf '{}' > "$STUB/vroot/assets/markdown-style.json"
+  cat > "$STUB/herdr" <<'SH'
+#!/usr/bin/env bash
+printf '{}'
+SH
+  cat > "$STUB/jq" <<SH
+#!/usr/bin/env bash
+printf '%s\n' "$STUB/vroot"
+SH
+  chmod +x "$STUB/herdr" "$STUB/jq"
+  unset QUICKLOOK_GLOW_STYLE HERDR_BIN_PATH
+  run render_markdown "$FIX/doc.md"
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"-s $STUB/vroot/assets/markdown-style.json"* ]]
+}
+
+@test "render_markdown: no viewer installed falls back to -s auto" {
+  stub_with_glow
+  unset QUICKLOOK_GLOW_STYLE HERDR_BIN_PATH
+  run render_markdown "$FIX/doc.md"
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"-s auto"* ]]
+}
+
 # ---- render_any dispatch: glow-present renders, glow-absent degrades ----
 
 @test "render_any: glow present - a .md file dispatches to the markdown renderer" {
