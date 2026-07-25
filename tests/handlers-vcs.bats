@@ -128,11 +128,11 @@ teardown() {
 @test "handle_vcs: a valid SHA builds the exact argv git show --end-of-options <sha>" {
   handle_vcs "abc1234"
   [ "$RESOLVED_MODE" = "command" ]
-  [ "${#RESOLVED_CMD[@]}" -eq 4 ]
+  local n=${#RESOLVED_CMD[@]}
   [ "${RESOLVED_CMD[0]}" = "git" ]
-  [ "${RESOLVED_CMD[1]}" = "show" ]
-  [ "${RESOLVED_CMD[2]}" = "--end-of-options" ]
-  [ "${RESOLVED_CMD[3]}" = "abc1234" ]
+  [ "${RESOLVED_CMD[n-1]}" = "abc1234" ]
+  [ "${RESOLVED_CMD[n-2]}" = "--end-of-options" ]
+  printf '%s\n' "${RESOLVED_CMD[@]}" | grep -qx "show"
   # goal file's literal example is `git show -- <sha>`; this deliberately
   # uses `--end-of-options` instead of a trailing `--` - see the comment in
   # vcs.sh and this sub-goal's DECISIONS.md entry ("`--` silently shows HEAD
@@ -189,8 +189,9 @@ teardown() {
 @test "argv-shape control: a space-and-metacharacter value still lands as ONE arg after the SHA branch's --end-of-options" {
   handle_vcs 'abc1234 && rm -rf / #'
   [ "$RESOLVED_MODE" = "command" ]
-  [ "${#RESOLVED_CMD[@]}" -eq 4 ]
-  [ "${RESOLVED_CMD[3]}" = 'abc1234 && rm -rf / #' ]
+  local n=${#RESOLVED_CMD[@]}
+  [ "${RESOLVED_CMD[n-1]}" = 'abc1234 && rm -rf / #' ]
+  [ "${RESOLVED_CMD[n-2]}" = "--end-of-options" ]
 }
 
 @test "argv-shape control: a flag-injection value through the #-branch still lands as ONE arg" {
@@ -234,8 +235,9 @@ teardown() {
   # proves handle_vcs's OWN argv construction is safe in depth: git rejects
   # the injected-looking flag rather than acting on it.
   handle_vcs "--upload-pack=/tmp/evil"
-  [ "${RESOLVED_CMD[2]}" = "--end-of-options" ]
-  [ "${RESOLVED_CMD[3]}" = "--upload-pack=/tmp/evil" ]
+  local n=${#RESOLVED_CMD[@]}
+  [ "${RESOLVED_CMD[n-2]}" = "--end-of-options" ]
+  [ "${RESOLVED_CMD[n-1]}" = "--upload-pack=/tmp/evil" ]
   run "${RESOLVED_CMD[@]}"
   [ "$status" -ne 0 ]
   [[ "$output" == *"must come before non-option arguments"* || "$output" == *"unknown"* || "$output" == *fatal* ]]
@@ -257,7 +259,7 @@ teardown() {
 @test "registry: a bare SHA dispatches to vcs end to end through resolve_any_token" {
   resolve_any_token "$REAL_SHA"
   [ "$RESOLVED_MODE" = "command" ]
-  [ "${RESOLVED_CMD[*]}" = "git show --end-of-options $REAL_SHA" ]
+  [ "${RESOLVED_CMD[*]}" = "git -c color.ui=always show --end-of-options $REAL_SHA" ]
 }
 
 @test "registry: a #123 hashref dispatches to vcs end to end through resolve_any_token" {
@@ -323,4 +325,11 @@ teardown() {
   [ "${RESOLVED_CMD[0]}" = "bash" ]
   [[ "${RESOLVED_CMD[1]}" == *"/pr-view.sh" ]]
   [ "${RESOLVED_CMD[2]}" = "123" ]
+}
+
+@test "a bare SHA renders git show in colour (it is piped, not on a tty)" {
+  cd "$FIX"
+  resolve_any_token "$REAL_SHA"
+  [ "$RESOLVED_MODE" = "command" ]
+  printf '%s\n' "${RESOLVED_CMD[@]}" | grep -qx "color.ui=always"
 }

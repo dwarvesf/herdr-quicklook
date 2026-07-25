@@ -60,18 +60,23 @@ render_text() {
       # nothing here, since LESSOPEN was already feeding less from a pipe.
       # shellcheck disable=SC2086
       bat --color=always $theme --style=numbers "$target" \
-        | pad_to_pane_height \
+        | pad_left | pad_to_pane_height \
         | less -R "${lesskey_args[@]}" "${PAGER_PROMPT_ARGS[@]}" ${line:++$line}
       return 0
     fi
     # Long file: already fills the pane, so keep less file-backed (seekable,
     # shows a real percentage) instead of buffering a pipe.
-    LESSOPEN="|bat --color=always $theme--style=numbers %s"
+    # LESSOPEN is a command STRING that less hands to a shell, so the inner
+    # quotes are meant literally and the shell does respect them; that is
+    # what SC2089/SC2090 warn about and why an array cannot be used here.
+    # shellcheck disable=SC2089
+    LESSOPEN="|bat --color=always $theme--style=numbers %s | sed 's/^/  /'"
+    # shellcheck disable=SC2090
     export LESSOPEN
     exec less -R "${lesskey_args[@]}" "${PAGER_PROMPT_ARGS[@]}" ${line:++$line} "$target"
   fi
   if _fits_in_pane "$target"; then
-    pad_to_pane_height < "$target" \
+    pad_left < "$target" | pad_to_pane_height \
       | less -N "${lesskey_args[@]}" "${PAGER_PROMPT_ARGS[@]}" ${line:++$line}
     return 0
   fi

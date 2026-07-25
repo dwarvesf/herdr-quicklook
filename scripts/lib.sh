@@ -394,6 +394,13 @@ _pane_rows() {
   printf '%s' "$sz"
 }
 
+# pad_left: one gutter of breathing room between the pane border and the
+# text. Prefix-only, so ANSI colour runs are untouched, and rows are
+# unchanged so a `path:N` jump still lands on the same line.
+pad_left() {
+  sed 's/^/  /'
+}
+
 pad_to_pane_height() {
   local rows
   rows="$(_pane_rows)"
@@ -776,7 +783,7 @@ render_command_in_pager() {
   # `printf | less` in a fresh pane, so this is the pane's behaviour, not
   # ours). Padding at END keeps the stream streaming: nothing is buffered,
   # the blank rows are only appended once the real output has ended.
-  CLICOLOR_FORCE=1 "$@" 2>&1 | pad_to_pane_height \
+  CLICOLOR_FORCE=1 "$@" 2>&1 | pad_left | pad_to_pane_height \
     | less -R "${lesskey_args[@]}" "${PAGER_PROMPT_ARGS[@]}"
 }
 
@@ -785,6 +792,38 @@ render_command_in_pager() {
 # RESOLVED_CMD for command mode) and returns 0 on a resolved token, or
 # returns 1 if no handler matched, or the matched handler could not resolve
 # a target (caller does its own fallback, if any).
+# expand_elided <token>: a transcript elides a long path mid-render
+# ("/private/tmp/.../f647b92b-2093-44f5-baa3-8e797a…"), leaving a token that
+# names nothing. Everything BEFORE the ellipsis is still an exact prefix,
+# so glob it. Only a UNIQUE match is accepted, since two candidates mean
+# guessing which file the user meant; anything else returns the token
+# unchanged and the normal miss path takes over. Runs before handler
+# dispatch, so the expanded path flows through the ordinary file/dir
+# handlers (a truncated DIRECTORY still opens in the viewer).
+expand_elided() {
+  local t="$1" prefix
+  case "$t" in
+    *'…' | *...) ;;
+    *) printf '%s' "$t"; return 0 ;;
+  esac
+  prefix="${t%'…'}"
+  prefix="${prefix%...}"
+  case "$prefix" in
+    '' | *[!/]*) ;;
+    *) printf '%s' "$t"; return 0 ;;
+  esac
+  [ -n "$prefix" ] || { printf '%s' "$t"; return 0; }
+  local m=()
+  # nullglob is off here on purpose: an unmatched pattern stays literal and
+  # the -e test below rejects it.
+  m=("$prefix"*)
+  if [ "${#m[@]}" -eq 1 ] && [ -e "${m[0]}" ]; then
+    printf '%s' "${m[0]}"
+    return 0
+  fi
+  printf '%s' "$t"
+}
+
 resolve_any_token() {
   local raw="$1" kind
   # A copied shell path routinely arrives tilde-form; no handler expands it,
@@ -795,6 +834,7 @@ resolve_any_token() {
     '~/'*) raw="$HOME/${raw#'~/'}" ;;
     '~') raw="$HOME" ;;
   esac
+  raw="$(expand_elided "$raw")"
   RESOLVED_TARGET=""
   RESOLVED_LINE=""
   RESOLVED_MODE=""
@@ -1399,6 +1439,23 @@ pick_scan_text() {
         # unopenable token whose hint lands on the `U`. Keep the inside.
         if (match(s, /^[A-Za-z_][A-Za-z0-9_.-]*\(/) && substr(s, length(s), 1) == ")") {
           s = substr(s, RLENGTH + 1, length(s) - RLENGTH - 1)
+        }
+        # Same call shape, but the closer is off the span: a wrapped
+        # `Bash(S=/private/...` line splits before the `)`, so the rule
+        # above cannot fire and the hint lands on the `B`. An opener whose
+        # closer never appears comes off the left.
+        if (match(s, /^[A-Za-z_][A-Za-z0-9_.-]*\(/) && index(s, ")") == 0) {
+          s = substr(s, RLENGTH + 1)
+        }
+        # Redirect prefix: `2>/dev/null`, `>out.log`, `2>&1`. The operator
+        # is shell syntax, not part of the name.
+        if (match(s, /^[0-9]*[<>]+&?/)) {
+          s = substr(s, RLENGTH + 1)
+        }
+        # Device files are not previewable content, and `/dev/null` is the
+        # single most common false positive in a shell transcript.
+        if (s ~ /^\/dev\//) {
+          s = ""
         }
         # Shell assignment prefix: `S=/private/tmp/...` hints on the `S`
         # and resolves nothing. Keep the value.
