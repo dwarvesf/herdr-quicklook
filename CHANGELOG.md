@@ -2,6 +2,12 @@
 
 ## Unreleased
 
+- The hint overlay bottom-aligns the snapshot: the origin pane anchors its
+  content to the bottom rows, so a snapshot shorter than the overlay pads
+  blank rows on TOP instead of floating up and leaving a blank band below.
+  Extras rows shrink the pad, mouse-click rows shift with it, and each
+  repainted row clears to EOL so the shifted repaint leaves no tails.
+
 - Viewer display parity for code: the bat theme pin is gone, so the user's
   own bat config decides the theme in BOTH panes (exactly how
   herdr-file-viewer invokes bat); QUICKLOOK_BAT_THEME now only adds a

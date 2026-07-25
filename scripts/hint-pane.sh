@@ -79,6 +79,7 @@ MOUSE_ON=$'\033[?1000;1006h'
 # paints over a shifted screen (the merged/duplicated-lines corruption).
 HOME=$'\033[H'
 EOD=$'\033[J'
+CLR=$'\033[K'
 CURSOR_HIDE=$'\033[?25l'
 WRAP_OFF=$'\033[?7l'
 
@@ -95,11 +96,25 @@ case "$rows" in '' | *[!0-9]*) rows=0 ;; esac
 offset=0
 [ "$rows" -gt 0 ] && [ "$total" -gt "$rows" ] && offset=$((total - rows))
 
+# Bottom-align: the origin pane anchors its content to the BOTTOM (the
+# prompt/status live on the last rows), so a snapshot SHORTER than this
+# overlay pads with blank rows on TOP. Top-aligning instead floats the
+# content up and leaves a blank band below (the "bottom padding" bug).
+pad=0
+if [ "$rows" -gt 0 ] && [ $((total - offset)) -lt "$rows" ]; then
+  pad=$((rows - (total - offset)))
+fi
+
 # First paint: the raw snapshot, instantly, one write, dimmed from the start
 # so the mode-switch is visible without any header line. No newline after the
 # last row (that alone scrolls a full pane), %s on purpose: snapshot text may
 # contain literal \n / \t sequences that %b would corrupt.
 frame="${CURSOR_HIDE}${WRAP_OFF}${HOME}"
+i=0
+while [ "$i" -lt "$pad" ]; do
+  frame+="$NL"
+  i=$((i + 1))
+done
 i="$offset"
 while [ "$i" -lt "$total" ]; do
   frame+="${DIM}${snap_lines[$i]}${RESET}"
@@ -150,8 +165,12 @@ styled_for() {
 }
 
 # Second paint: snapshot with in-place hint overlays, one write, overwriting
-# the first paint in place (no clear, no flicker).
-frame="${HOME}"
+# the first paint in place (no clear, no flicker). Built into `body` first:
+# the extras rows appended below shrink the top pad (bottom-align must hold
+# with them included), and that count is only known after the loop. Each row
+# ends with clear-to-EOL: the repaint can sit HIGHER than the first paint
+# (smaller pad), so an old longer row would otherwise leave a tail.
+body=""
 extras=()
 span_row=(); span_c1=(); span_c2=(); span_idx=()
 
@@ -219,8 +238,8 @@ while [ "$lidx" -lt "$total" ]; do
     span_idx+=("$idx")
     prev_start=$pos
   done
-  frame+="${DIM}${line}${RESET}"
-  [ $((lidx + 1)) -lt "$total" ] && frame+="$NL"
+  body+="${DIM}${line}${RESET}${CLR}"
+  [ $((lidx + 1)) -lt "$total" ] && body+="$NL"
   lidx=$((lidx + 1))
 done
 
@@ -230,7 +249,7 @@ screen_rows=$((total - offset))
 if [ "${#extras[@]}" -gt 0 ]; then
   for i in "${extras[@]}"; do
     styled_for "$i"
-    frame+="${NL}  ${STYLED}  ${DIM}${labels[$i]}${RESET}"
+    body+="${NL}  ${STYLED}  ${DIM}${labels[$i]}${RESET}${CLR}"
     screen_rows=$((screen_rows + 1))
     span_row+=("$screen_rows")
     span_c1+=(1)
@@ -238,7 +257,29 @@ if [ "${#extras[@]}" -gt 0 ]; then
     span_idx+=("$i")
   done
 fi
-frame+="${EOD}${MOUSE_ON}"
+
+# Re-derive the top pad with the extras rows counted in, floor 0, and shift
+# every stored mouse-target row by it: span rows were computed relative to
+# the content's first row, but SGR click coordinates are pane-absolute.
+pad=0
+if [ "$rows" -gt 0 ] && [ "$screen_rows" -lt "$rows" ]; then
+  pad=$((rows - screen_rows))
+fi
+if [ "$pad" -gt 0 ]; then
+  i=0
+  while [ "$i" -lt "${#span_row[@]}" ]; do
+    span_row[i]=$((span_row[i] + pad))
+    i=$((i + 1))
+  done
+fi
+
+frame="${HOME}"
+i=0
+while [ "$i" -lt "$pad" ]; do
+  frame+="$NL"
+  i=$((i + 1))
+done
+frame+="${body}${EOD}${MOUSE_ON}"
 
 printf '%s' "$frame"
 
