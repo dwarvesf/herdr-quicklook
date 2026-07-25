@@ -2,6 +2,13 @@
 
 ## Unreleased
 
+- The hint scanner trims UNMATCHED wrapping punctuation: prose like
+  `(assets/markdown-style.json copied ...)` splits the opener onto the span
+  with its closer words away, so the token kept a leading `(` and never
+  resolved. An opener with no closer in the span comes off the left, a
+  closer with no opener off the right; spans holding both (`foo(1).md`,
+  wiki-style URLs) stay untouched.
+
 ## 0.5.0 (2026-07-26)
 
 - The bare-filename fallback (rung 7) widens to the workspace: when the

@@ -38,6 +38,21 @@ teardown() {
   [ "$output" = "$(printf 'sub/inrepo.md\tpath\t1')" ]
 }
 
+@test "pick_scan_text: an unmatched leading paren comes off (prose wrapping splits the closer away)" {
+  run pick_scan_text <<<'see (sub/inrepo.md copied from the discussion)'
+  [[ "$output" == *"$(printf 'sub/inrepo.md\tpath\t1')"* ]]
+}
+
+@test "pick_scan_text: an unmatched trailing paren comes off" {
+  run pick_scan_text <<<'(the file is sub/inrepo.md)'
+  [[ "$output" == *"$(printf 'sub/inrepo.md\tpath\t1')"* ]]
+}
+
+@test "pick_scan_text: a span holding BOTH parens keeps them (wiki-style URL)" {
+  run pick_scan_text <<<'https://en.wikipedia.org/wiki/Foo_(bar) explains it'
+  [[ "$output" == *"$(printf 'https://en.wikipedia.org/wiki/Foo_(bar)\turl\t1')"* ]]
+}
+
 @test "pick_scan_text: a generic URL -> kind url" {
   run pick_scan_text <<<'see https://example.com/a/b for docs'
   [ "$output" = "$(printf 'https://example.com/a/b\turl\t1')" ]

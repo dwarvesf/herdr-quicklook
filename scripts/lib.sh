@@ -1211,6 +1211,36 @@ pick_scan_text() {
             s = substr(s, 2, length(s) - 2)
           }
         }
+        # UNMATCHED wrapper: prose like "(assets/style.json copied ...)"
+        # whitespace-splits the opener onto the span with its closer words
+        # away, so the matched rule above never fires. An opener whose
+        # closer never appears in the span comes off the left; a closer
+        # whose opener never appears comes off the right. A span holding
+        # both (foo(1).md, a wiki URL with _(bar)) is untouched.
+        if (length(s) >= 2) {
+          first = substr(s, 1, 1)
+          if ((first == "(" && index(s, ")") == 0) ||
+              (first == "[" && index(s, "]") == 0) ||
+              (first == "{" && index(s, "}") == 0) ||
+              (first == "<" && index(s, ">") == 0) ||
+              (first == dq && index(substr(s, 2), dq) == 0) ||
+              (first == sq && index(substr(s, 2), sq) == 0) ||
+              (first == bq && index(substr(s, 2), bq) == 0)) {
+            s = substr(s, 2)
+          }
+        }
+        if (length(s) >= 2) {
+          last = substr(s, length(s), 1)
+          if ((last == ")" && index(s, "(") == 0) ||
+              (last == "]" && index(s, "[") == 0) ||
+              (last == "}" && index(s, "{") == 0) ||
+              (last == ">" && index(s, "<") == 0) ||
+              (last == dq && index(substr(s, 1, length(s) - 1), dq) == 0) ||
+              (last == sq && index(substr(s, 1, length(s) - 1), sq) == 0) ||
+              (last == bq && index(substr(s, 1, length(s) - 1), bq) == 0)) {
+            s = substr(s, 1, length(s) - 1)
+          }
+        }
         if (s == prev) break
       }
       return s
