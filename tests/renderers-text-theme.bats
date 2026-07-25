@@ -58,3 +58,29 @@ teardown() {
   [[ "$output" != *"header"* ]]
   [[ "$output" != *"grid"* ]]
 }
+
+# ---- short content renders from the TOP of a bottom-anchored pane ----
+
+@test "pad_to_pane_height fills the pane so short content is not bottom-anchored" {
+  run bash -c ". '$LIB'; _pane_rows() { printf '10'; }; printf 'a\nb\n' | pad_to_pane_height | wc -l"
+  [ "$status" -eq 0 ]
+  # 2 real rows padded up to rows-1, leaving the last row for the footer
+  [ "$(echo "$output" | tr -d ' ')" -eq 9 ]
+}
+
+@test "pad_to_pane_height leaves content longer than the pane untouched" {
+  run bash -c ". '$LIB'; _pane_rows() { printf '4'; }; seq 1 20 | pad_to_pane_height | wc -l"
+  [ "$status" -eq 0 ]
+  [ "$(echo "$output" | tr -d ' ')" -eq 20 ]
+}
+
+@test "_pane_rows is silent and numeric with no controlling tty" {
+  # tput reads the size off STDOUT, so in a pipeline or a command
+  # substitution it silently returns the terminfo default 24 instead of the
+  # real height - the bug this function exists to avoid. It must also not
+  # leak a "/dev/tty: Device not configured" line when there is no tty.
+  run bash -c ". '$LIB'; _pane_rows"
+  [ "$status" -eq 0 ]
+  [[ "$output" != *"/dev/tty"* ]]
+  [[ "$output" =~ ^[0-9]+$ ]]
+}

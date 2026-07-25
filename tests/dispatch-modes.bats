@@ -159,7 +159,10 @@ GH
   # never with the directory as a trailing file argument - that would be
   # the exact `exec less <directory>` bug this arm exists to prevent.
   [[ "$output" == *"LESS_ARGS:"* ]]
-  [[ "$output" != *"LESS_ARGS:"*"somedir"* ]]
+  # the dir may legitimately appear INSIDE the -Ps footer prompt; what must
+  # never happen is less receiving it as a trailing FILE argument.
+  [[ "$output" != *" somedir" ]]
+  [[ "$output" != *" somedir "* ]]
 }
 
 # ---- open-in-viewer.sh: command mode never touches the file-viewer

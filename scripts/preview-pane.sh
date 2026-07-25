@@ -31,6 +31,8 @@ raw="$(pick_token "${1:-}")"
 target=""
 CLIP_LINE=""
 if resolve_any_token "$raw"; then
+  # the pane border is the right place for the object's name
+  name_pane "$raw" "${RESOLVED_TARGET:-}"
   case "$RESOLVED_MODE" in
     browser)
       # Opening the browser is a successful open like any other mode (this
