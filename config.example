@@ -57,3 +57,14 @@
 
 # Hint picker: restore the slower fully-verified scan instead of shape-first.
 #QUICKLOOK_HINT_VERIFIED=1
+
+# QUICKLOOK_KEY_HINT: the key footer painted along the bottom of the preview
+# pane. Set to an empty string to hide it once the keys are muscle memory.
+#QUICKLOOK_KEY_HINT="q quit · o viewer · e edit · D diff · / search · space page"
+
+# QUICKLOOK_DEBUG_LOG: append one line per hint pick to
+# ~/.config/herdr/quicklook-debug.log (the computed viewer_ok, plus the
+# picked token's resolved mode and target). Off by default; useful when a
+# pick routes somewhere unexpected, because a pane's environment differs
+# from a shell's in ways that silently change routing.
+#QUICKLOOK_DEBUG_LOG=1

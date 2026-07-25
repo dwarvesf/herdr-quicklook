@@ -26,6 +26,7 @@ render_text() {
   local target="$1" line="${2:-}"
   local lesskey_args=()
   [ -f "$LIB_DIR/../lesskey" ] && lesskey_args=(--lesskey-src="$LIB_DIR/../lesskey")
+  pager_prompt_args
 
   export VISUAL="$LIB_DIR/escalate.sh"
   # Read by the lesskey `e` pshell binding (escalate-editor.sh); see lesskey.
@@ -40,7 +41,7 @@ render_text() {
     # viewer's own title UI.
     LESSOPEN="|bat --color=always $(_bat_theme_flag)--style=numbers,header %s"
     export LESSOPEN
-    exec less -R "${lesskey_args[@]}" ${line:++$line} "$target"
+    exec less -R "${lesskey_args[@]}" "${PAGER_PROMPT_ARGS[@]}" ${line:++$line} "$target"
   fi
-  exec less -N "${lesskey_args[@]}" ${line:++$line} "$target"
+  exec less -N "${lesskey_args[@]}" "${PAGER_PROMPT_ARGS[@]}" ${line:++$line} "$target"
 }

@@ -2,6 +2,13 @@
 
 ## Unreleased
 
+- The preview pane now paints a key footer along its bottom line
+  (`q quit · o viewer · e edit · D diff · / search · space page`), so the
+  bindings are discoverable instead of folklore. It rides less's own short
+  prompt, so scrolling and the render registry are untouched, and the
+  nested diff view gets its own footer because its keys differ. Hide it
+  with an empty `QUICKLOOK_KEY_HINT`.
+
 - A folder picked anywhere now opens in the file viewer, rooted at that
   folder, even outside the current repo. The plugin's own pane action can
   only ever root at the focused pane, so an outside target instead gets a

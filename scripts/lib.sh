@@ -316,6 +316,27 @@ viewer_bin() {
   printf '%s' "$bin"
 }
 
+# The keys advertised in the pager's footer. Kept in sync BY HAND with
+# ../lesskey, which is the source of truth for o/e/D; q and / are less's
+# own. Anything listed here must actually be bound there, so a new user
+# reading the footer never presses a key that does nothing.
+QUICKLOOK_KEY_HINT='q quit · o viewer · e edit · D diff · / search · space page'
+
+# pager_prompt_args -> sets the fixed global PAGER_PROMPT_ARGS to the `less`
+# prompt flag that paints the key footer along the bottom line, or to an
+# empty array when QUICKLOOK_KEY_HINT is blank (the opt-out). A fixed output
+# global, not a nameref: Apple's bash is 3.2, which has no `local -n` (same
+# reason the pick scanner uses _PICK_* globals).
+# `-Ps` selects less's SHORT prompt explicitly: a bare -P would swallow a
+# leading s/m/M/=/h/w as a prompt selector, and the hint's first character
+# is not ours to constrain. The hint carries no `%`, so none of less's
+# prompt escapes can fire on it.
+pager_prompt_args() {
+  PAGER_PROMPT_ARGS=()
+  [ -n "${QUICKLOOK_KEY_HINT:-}" ] && PAGER_PROMPT_ARGS=("-Ps$QUICKLOOK_KEY_HINT")
+  return 0
+}
+
 # _bat_theme_flag -> "--theme=<name> " (trailing space) when
 # QUICKLOOK_BAT_THEME is set, else "". Shared by text.sh's LESSOPEN and
 # find-pane.sh's fzf preview so the viewer-parity rule (no flag by default,
@@ -659,11 +680,12 @@ unset _herdr_renderer
 render_command_in_pager() {
   local lesskey_args=()
   [ -f "$LIB_DIR/../lesskey" ] && lesskey_args=(--lesskey-src="$LIB_DIR/../lesskey")
+  pager_prompt_args
   # CLICOLOR_FORCE=1: same trick herdr-file-viewer applies to every renderer
   # subprocess - termenv-based tools (glow/glamour) drop to a no-color
   # profile when stdout is a pipe even with an explicit style; harmless to
   # bat/delta/jq, which force color via their own flags.
-  CLICOLOR_FORCE=1 "$@" 2>&1 | less -R "${lesskey_args[@]}"
+  CLICOLOR_FORCE=1 "$@" 2>&1 | less -R "${lesskey_args[@]}" "${PAGER_PROMPT_ARGS[@]}"
 }
 
 # resolve_any_token <raw> -> see the handler-registry contract at the top of
