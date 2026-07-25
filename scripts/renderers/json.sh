@@ -29,5 +29,7 @@ match_render_json() {
 # of a render - an honest degrade, not a crash.
 render_json() {
   local path="$1"
-  render_command_in_pager jq . -- "$path"
+  # -C: jq drops color when piped (the pager pipeline); force it, less -R
+  # already renders it.
+  render_command_in_pager jq -C . -- "$path"
 }

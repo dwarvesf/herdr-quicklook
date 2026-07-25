@@ -132,5 +132,15 @@ SH
   printf '{"a":1}' > "$FIX/mini.json"
   run bash -c ". '$LIB'; render_json '$FIX/mini.json'"
   [ "$status" -eq 0 ]
-  [[ "$output" == *'"a": 1'* ]]
+  # -C forces color even piped; strip ANSI before the content assertion
+  plain="$(printf '%s' "$output" | sed $'s/\x1b\[[0-9;]*m//g')"
+  [[ "$plain" == *'"a": 1'* ]]
+}
+
+@test "render_json: color is forced through the pager pipe (-C in argv)" {
+  _stub_jq
+  export PATH="$STUB:$PATH"
+  run bash -c ". '$LIB'; render_json '$FIX/t.json'"
+  [ "$status" -eq 0 ]
+  grep -qx -- '-C' "$JQ_ARGV_FILE"
 }

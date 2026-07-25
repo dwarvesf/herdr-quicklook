@@ -31,7 +31,11 @@ render_text() {
   # Read by the lesskey `e` pshell binding (escalate-editor.sh); see lesskey.
   export QUICKLOOK_EDITOR_SCRIPT="$LIB_DIR/escalate-editor.sh"
   if command -v bat >/dev/null 2>&1; then
-    export LESSOPEN='|bat --color=always --style=numbers %s'
+    # ansi theme = the terminal's own 16 colors, so code matches the pane
+    # theme (and the viewer) instead of bat's 256-color default; grid +
+    # header frame the file like the viewer does. QUICKLOOK_BAT_THEME
+    # overrides (any `bat --list-themes` name).
+    export LESSOPEN="|bat --color=always --theme=${QUICKLOOK_BAT_THEME:-ansi} --style=numbers,header,grid %s"
     exec less -R "${lesskey_args[@]}" ${line:++$line} "$target"
   fi
   exec less -N "${lesskey_args[@]}" ${line:++$line} "$target"
