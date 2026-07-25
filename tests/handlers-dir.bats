@@ -187,11 +187,28 @@ teardown() {
   grep -qF "pane send-keys STUBPANE Enter" "$HLOG"
 }
 
-@test "negative control: a directory outside the repo notifies and never sends keys" {
+@test "a directory outside the repo re-roots a fresh viewer tab at it (no goto: it IS the root)" {
   export HERDR_VIEWER_INSTALLED=1
   export QUICKLOOK_TOKEN="$FIX/outside/adir"
   run bash "$VIEWER"
   [ "$status" -eq 0 ]
-  grep -q "notification show quicklook --body outside this repo" "$HLOG"
-  ! grep -q "pane send-keys" "$HLOG"
+  # not a git repo, so the root is the directory itself, passed as --cwd
+  grep -qF -- "--cwd $FIX/outside/adir" "$HLOG"
+  # the idempotent tab action would reuse a wrong-root tab; must not be used
+  ! grep -q "action invoke open-file-viewer-tab" "$HLOG"
+  # target IS the root: no goto keys
+  ! grep -q "pane send-text" "$HLOG"
+}
+
+@test "a file in a SIBLING repo re-roots the viewer at that repo and gotos the rel path" {
+  mkdir -p "$FIX/sibling/docs"
+  git -C "$FIX/sibling" init -q -b main
+  printf 'x\n' > "$FIX/sibling/docs/note.md"
+  export HERDR_VIEWER_INSTALLED=1
+  export QUICKLOOK_TOKEN="$FIX/sibling/docs/note.md"
+  run bash "$VIEWER"
+  [ "$status" -eq 0 ]
+  grep -qF -- "--cwd $FIX/sibling" "$HLOG"
+  grep -qF "pane send-text STUBPANE docs/note.md" "$HLOG"
+  grep -qF "pane send-keys STUBPANE Enter" "$HLOG"
 }

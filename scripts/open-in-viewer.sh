@@ -75,10 +75,9 @@ if resolve_any_token "$raw"; then
       # viewer's cursor on the directory; there is no separate "root at a
       # directory" verb in the socket protocol. Directories have no line
       # number, so CLIP_LINE stays empty and the `:N` step below is skipped
-      # naturally. This falls into the SAME containment / control-char
-      # checks below as a file target - a directory outside this repo's
-      # tree still gets "outside this repo's tree: use the preview overlay
-      # instead".
+      # naturally. This falls into the SAME re-root / control-char checks
+      # below as a file target - a directory outside this repo's tree
+      # opens a fresh viewer tab rooted at its own repo.
       target="$RESOLVED_TARGET"
       CLIP_LINE=""
       ;;
@@ -90,13 +89,20 @@ if resolve_any_token "$raw"; then
 fi
 [ -z "${target:-}" ] && { notify "not found: $raw"; exit 0; }
 
-# The viewer roots at the focused pane's repo; outside targets can't show
-# there. The root itself is inside its own tree (rel stays empty: the viewer
-# opens rooted there, no goto needed).
+# The viewer roots at its launch cwd's repo. A target inside the focused
+# repo reuses the idempotent tab action; a target OUTSIDE it (a cockpit row
+# pointing into a sibling repo) re-roots a fresh viewer tab at the TARGET's
+# own repo via `plugin pane open --cwd` instead of refusing. The root itself
+# is inside its own tree (rel stays empty: the viewer opens rooted there,
+# no goto needed).
 root="$(git rev-parse --show-toplevel 2>/dev/null)"
+viewer_cwd=""
 if [ -z "$root" ] || { [ "$target" != "$root" ] && [[ "$target" != "$root"/* ]]; }; then
-  notify "outside this repo's tree: use the preview overlay instead"
-  exit 0
+  tdir="$target"
+  [ -d "$tdir" ] || tdir="${target%/*}"
+  root="$(git -C "$tdir" rev-parse --show-toplevel 2>/dev/null)"
+  [ -z "$root" ] && root="$tdir"
+  viewer_cwd="$root"
 fi
 rel="${target#"$root"/}"
 [ "$rel" = "$target" ] && rel=""
@@ -112,8 +118,17 @@ esac
 # existing viewer tab instead of opening twice): a vertical split would
 # disrupt the origin tab's layout. After the action, focus lands on the
 # viewer pane; poll `pane current` until its label reads "Files".
-"$herdr_bin" plugin action invoke open-file-viewer-tab --plugin herdr-file-viewer >/dev/null 2>&1 \
-  || { notify "herdr-file-viewer is not installed"; exit 1; }
+# Cross-repo targets bypass the idempotent action on purpose: an existing
+# viewer tab is rooted at the WRONG repo, so a fresh tab is opened rooted
+# at the target's repo (the viewer resolves its tree root from the cwd).
+if [ -n "$viewer_cwd" ]; then
+  "$herdr_bin" plugin pane open --plugin herdr-file-viewer --entrypoint file-viewer \
+    --placement tab --focus --cwd "$viewer_cwd" >/dev/null 2>&1 \
+    || { notify "file viewer did not open (cross-repo)"; exit 1; }
+else
+  "$herdr_bin" plugin action invoke open-file-viewer-tab --plugin herdr-file-viewer >/dev/null 2>&1 \
+    || { notify "herdr-file-viewer is not installed"; exit 1; }
+fi
 pid=""
 for _ in $(seq 1 20); do
   pid="$("$herdr_bin" pane current 2>/dev/null | jq -r '.result.pane.pane_id // empty' 2>/dev/null)"
