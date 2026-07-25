@@ -2,6 +2,16 @@
 
 ## Unreleased
 
+- Review-batch fixes (advisor + security/architecture/test lenses over the
+  session): escalate-editor/find-pane/recents-pane load env-only config (no
+  wasted git+herdr forks); augment_roots' one plugin-list fork also captures
+  the viewer root so render_markdown never re-queries; the cross-repo viewer
+  re-root notifies where it rooted; bat theme flag shared via _bat_theme_flag;
+  the not-found message mentions the workspace filename search; hint-pane's
+  tty fallback probes openability (bare -r passes with no controlling tty).
+  New tests: hint-pane bottom-align (headless stty stub), glow -w width,
+  CLICOLOR_FORCE, viewer re-root failure + :line goto, oversized sweep guard.
+
 - The hint overlay bottom-aligns the snapshot: the origin pane anchors its
   content to the bottom rows, so a snapshot shorter than the overlay pads
   blank rows on TOP instead of floating up and leaving a blank band below.

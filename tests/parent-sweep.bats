@@ -51,6 +51,15 @@ teardown() {
   [ "$QUICKLOOK_ROOTS" = "$FIX/ws/org:$FIX/ws" ]
 }
 
+@test "augment_roots: an oversized sweep stops at the filesystem root, no empty segments" {
+  QUICKLOOK_PARENT_SWEEP=99
+  augment_roots
+  [ -n "$QUICKLOOK_ROOTS" ]
+  [[ "$QUICKLOOK_ROOTS" != *"::"* ]]
+  [[ "$QUICKLOOK_ROOTS" != :* ]]
+  [[ "$QUICKLOOK_ROOTS" != *: ]]
+}
+
 @test "resolve: an org-prefixed cross-repo token resolves with zero config" {
   augment_roots
   run resolve "sibling/docs/note.md"
@@ -82,7 +91,7 @@ printf '{}'
 SH
   cat > "$STUB/jq" <<SH
 #!/usr/bin/env bash
-printf '%s\n' "$STUB/proot"
+printf 'herdr-file-viewer\t%s\n' "$STUB/proot"
 SH
   chmod +x "$STUB/herdr" "$STUB/jq"
   herdr_bin="$STUB/herdr"

@@ -16,7 +16,9 @@ script_dir="$(cd "$(dirname "${BASH_SOURCE[0]:-$0}")" && pwd)"
 # shellcheck disable=SC1091
 . "$script_dir/lib.sh"
 
-load_config
+# env only: this pane resolves nothing itself; it execs preview-pane.sh,
+# which runs the full load_config (roots) in the child anyway.
+load_config_env
 
 if [ -n "${QUICKLOOK_FIND_CWD:-}" ] && [ -d "$QUICKLOOK_FIND_CWD" ]; then
   cd "$QUICKLOOK_FIND_CWD" || true
@@ -43,11 +45,9 @@ list_files() {
   fi
 }
 
-# Same theme rule as text.sh: the user's bat config decides (viewer parity);
-# QUICKLOOK_BAT_THEME adds a --theme flag only when explicitly set.
-bat_theme_flag=""
-[ -n "${QUICKLOOK_BAT_THEME:-}" ] && bat_theme_flag="--theme=${QUICKLOOK_BAT_THEME} "
-preview_cmd="bat --color=always ${bat_theme_flag}--style=numbers {} 2>/dev/null || cat {} 2>/dev/null"
+# Theme rule shared with text.sh via lib.sh's _bat_theme_flag: the user's
+# bat config decides unless QUICKLOOK_BAT_THEME is explicitly set.
+preview_cmd="bat --color=always $(_bat_theme_flag)--style=numbers {} 2>/dev/null || cat {} 2>/dev/null"
 command -v bat >/dev/null 2>&1 || preview_cmd='cat {} 2>/dev/null'
 
 # QUICKLOOK_FIND_QUERY pre-seeds the fzf query: the hint flow drops an

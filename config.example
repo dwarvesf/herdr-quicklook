@@ -14,7 +14,10 @@
 # QUICKLOOK_PARENT_SWEEP: how many parent levels of the current repo root are
 # added as IMPLICIT roots (side-by-side repo layouts then resolve cross-repo
 # tokens with zero config). Default 2 (parent + grandparent); 0 disables,
-# leaving only the explicit QUICKLOOK_ROOTS above.
+# leaving only the explicit QUICKLOOK_ROOTS above. Depth-shape-sensitive:
+# 2 fits ws/<org>/<repo> layouts; if your repos sit DIRECTLY under the
+# workspace root (ws/<repo>), set 1 so the sweep stops at the workspace
+# instead of reaching one level above it.
 #QUICKLOOK_PARENT_SWEEP=2
 
 # QUICKLOOK_GLOW_STYLE: glow style for markdown previews, a glow style name

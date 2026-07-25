@@ -39,9 +39,16 @@ _markdown_glow_style() {
     printf '%s' "$QUICKLOOK_GLOW_STYLE"
     return 0
   fi
-  local vroot
-  vroot="$("${HERDR_BIN_PATH:-herdr}" plugin list --json 2>/dev/null \
-    | jq -r '.result.plugins[] | select(.plugin_id == "herdr-file-viewer") | .plugin_root // empty' 2>/dev/null)"
+  # augment_roots (load_config) already captured the viewer root from its
+  # own plugin-list fork; querying again here would pay the same herdr+jq
+  # cost twice per render. The query below is only the fallback for callers
+  # that never ran load_config (tests sourcing lib.sh directly).
+  local vroot="${QUICKLOOK_VIEWER_ROOT:-}"
+  if [ -z "$vroot" ]; then
+    # shellcheck disable=SC2154  # herdr_bin is set by lib.sh before this file is sourced
+    vroot="$("$herdr_bin" plugin list --json 2>/dev/null \
+      | jq -r '.result.plugins[] | select(.plugin_id == "herdr-file-viewer") | .plugin_root // empty' 2>/dev/null)"
+  fi
   if [ -n "$vroot" ] && [ -f "$vroot/assets/markdown-style.json" ]; then
     printf '%s' "$vroot/assets/markdown-style.json"
     return 0

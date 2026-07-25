@@ -266,6 +266,15 @@ load_config_env() {
   [ -n "$dir" ] && [ -f "$dir/.env" ] && . "$dir/.env"
 }
 
+# _bat_theme_flag -> "--theme=<name> " (trailing space) when
+# QUICKLOOK_BAT_THEME is set, else "". Shared by text.sh's LESSOPEN and
+# find-pane.sh's fzf preview so the viewer-parity rule (no flag by default,
+# the user's bat config decides) lives in exactly one place.
+_bat_theme_flag() {
+  [ -n "${QUICKLOOK_BAT_THEME:-}" ] && printf -- '--theme=%s ' "$QUICKLOOK_BAT_THEME"
+  return 0
+}
+
 # _append_root <dir>: append one directory to QUICKLOOK_ROOTS, skipping
 # empties, non-directories, and duplicates. rc 0 always.
 _append_root() {
@@ -304,10 +313,15 @@ augment_roots() {
       _append_root "$base"
     done
   fi
-  while IFS= read -r r; do
+  # One fork serves two consumers: every plugin_root joins the roots, and
+  # the file-viewer's root is captured for _markdown_glow_style so the
+  # markdown renderer never re-runs this same herdr+jq query per render.
+  local pid
+  while IFS=$'\t' read -r pid r; do
     _append_root "$r"
+    [ "$pid" = "herdr-file-viewer" ] && QUICKLOOK_VIEWER_ROOT="$r"
   done < <("$herdr_bin" plugin list --json 2>/dev/null \
-    | jq -r '.result.plugins[].plugin_root // empty' 2>/dev/null)
+    | jq -r '.result.plugins[] | [.plugin_id, .plugin_root // empty] | @tsv' 2>/dev/null)
   return 0
 }
 
