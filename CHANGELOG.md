@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+- Markdown (and docx/xlsx/ipynb via the same path) no longer wraps at glow's
+  hard piped default of 80 columns: `render_markdown` measures the pane's TTY
+  and passes `-w`, so wide panes stop showing ragged orphan line fragments.
+
 ## 0.4.1 (2026-07-20)
 
 - Demo roster pruned to living features only: removed the pick-anywhere,
