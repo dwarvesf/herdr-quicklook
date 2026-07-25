@@ -122,6 +122,16 @@ fi
 viewer_ok=0
 "$herdr_bin" plugin action list --plugin herdr-file-viewer >/dev/null 2>&1 && viewer_ok=1
 
+# Optional routing diagnostic (QUICKLOOK_DEBUG_LOG=1 in the plugin .env):
+# the pane/action environment differs from a shell in ways that silently
+# change routing, and this line is the difference between guessing and
+# knowing which branch a pick took.
+if [ -n "${QUICKLOOK_DEBUG_LOG:-}" ]; then
+  printf '%s hint: viewer_ok=%s herdr_bin=%s path=%s\n' \
+    "$(date +%T)" "$viewer_ok" "$herdr_bin" "$PATH" \
+    >> "$HOME/.config/herdr/quicklook-debug.log" 2>/dev/null || true
+fi
+
 set -- plugin pane open \
   --plugin herdr-quicklook \
   --entrypoint hint-pane \
