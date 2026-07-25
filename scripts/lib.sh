@@ -147,7 +147,31 @@
 # file); no other renderer touches it.
 # -----------------------------------------------------------------------
 
+# herdr_bin: HERDR_BIN_PATH (herdr's own convention) wins, else a bare
+# `herdr` off PATH. The bare name is NOT safe to assume inside a pane: the
+# server is often launched with a minimal PATH (measured on macOS:
+# /usr/bin:/bin:/usr/sbin:/sbin, no /opt/homebrew/bin), and every pane and
+# action it spawns inherits that. A plugin script that cannot reach `herdr`
+# does not fail loudly - it silently loses the .env, the plugin roots, and
+# the dir-handler's viewer gate, so a DIRECTORY degrades to a tree listing
+# in the popup instead of opening the real file viewer. Probe once here and
+# fall back to the usual install locations so pane context matches shell
+# context.
 herdr_bin="${HERDR_BIN_PATH:-herdr}"
+if ! command -v "$herdr_bin" >/dev/null 2>&1; then
+  for _herdr_cand in \
+    /opt/homebrew/bin/herdr \
+    /usr/local/bin/herdr \
+    "$HOME/.cargo/bin/herdr" \
+    "$HOME/.local/bin/herdr"; do
+    if [ -x "$_herdr_cand" ]; then
+      herdr_bin="$_herdr_cand"
+      export HERDR_BIN_PATH="$_herdr_cand" # children (exec'd scripts) inherit it
+      break
+    fi
+  done
+  unset _herdr_cand
+fi
 
 clip_read() {
   if command -v pbpaste >/dev/null 2>&1; then pbpaste

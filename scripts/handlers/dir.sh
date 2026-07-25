@@ -57,8 +57,16 @@ _resolve_dir() {
 
 # _dir_viewer_available -> rc 0 if herdr-file-viewer is installed, the same
 # check open-in-viewer.sh's own soft-dependency gate uses.
+# QUICKLOOK_VIEWER_OK short-circuits the RPC: the hint ACTION already ran
+# this check in its own context and passes the answer into the overlay pane,
+# so a pane that cannot reach `herdr` still routes a directory correctly
+# (and every pick saves a round trip).
 # shellcheck disable=SC2154  # herdr_bin is set by lib.sh before this file is sourced
 _dir_viewer_available() {
+  case "${QUICKLOOK_VIEWER_OK:-}" in
+    1) return 0 ;;
+    0) return 1 ;;
+  esac
   "$herdr_bin" plugin action list --plugin herdr-file-viewer >/dev/null 2>&1
 }
 
