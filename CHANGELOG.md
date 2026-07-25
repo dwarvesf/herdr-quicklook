@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+## 0.5.0 (2026-07-26)
+
 - The bare-filename fallback (rung 7) widens to the workspace: when the
   current repo's tracked files have no hit, every first-level child repo of
   QUICKLOOK_ROOTS is searched (bounded, deduped, current repo skipped), so a
