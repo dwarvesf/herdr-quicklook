@@ -2,11 +2,14 @@
 
 ## Unreleased
 
-- The previewed object's name moved into the pane border ("Preview:
-  vcs.sh", "Preview: PR #65"), and bat's filename header row is gone with
-  it. The name now costs no content row, cannot wrap onto a second line,
-  and no longer shifts `path:N` jumps, so the jump compensation that
-  header needed is deleted too.
+- The previewed object's name now shows in the pager footer
+  ("vcs.sh . q quit . o viewer ..."). A plugin pane's border is drawn from
+  the manifest title and ignores the pane label, so the border cannot
+  carry it; the footer is a row we already own, is truncated rather than
+  wrapped, and shifts no `path:N` jump. The pane is also renamed
+  "Preview: <name>", which shows in `pane list` and on a tab.
+- Short previews render from the TOP of the pane instead of sitting at
+  the bottom with blank rows above them.
 - Glob patterns stop offering an open that always fails: `scripts/*.sh`
   hints the directory that contains it, and a bare `*.sh` is dropped.
 

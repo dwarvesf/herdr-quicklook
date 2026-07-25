@@ -340,6 +340,66 @@ debug_log() {
   return 0
 }
 
+# name_pane <raw-token> [resolved-target]: retitle THIS pane after the
+# object it is showing ("Preview: vcs.sh", "Preview: PR #65").
+#
+# Done from inside the pane, not by the opener: `plugin pane open` with
+# --placement popup returns only {"result":{"type":"ok"}} with no pane id
+# (a tab/split open does return one), so the opener has nothing to rename.
+# The pane is focused when it starts, so `pane current` is its own id.
+name_pane() {
+  local raw="$1" target="${2:-}" label pane
+  case "$raw" in
+    '#'*) label="PR ${raw%% *}" ;;
+    https://github.com/*/pull/*) label="PR #${raw##*/}" ;;
+    *)
+      label="${target:-$raw}"
+      label="${label%%:[0-9]*}"
+      label="${label##*/}"
+      ;;
+  esac
+  [ -n "$label" ] || return 0
+  # The pane BORDER of a plugin pane is drawn from the manifest title
+  # ("Preview") and ignores the pane label, so the name also goes in the
+  # pager footer, the one always-visible row we own. less truncates that
+  # prompt to the width, so a long name can never wrap or shift a jump.
+  QUICKLOOK_OBJECT_LABEL="$label"
+  export QUICKLOOK_OBJECT_LABEL
+  command -v jq >/dev/null 2>&1 || return 0
+  pane="$("$herdr_bin" pane current 2>/dev/null | jq -r '.result.pane.pane_id // empty' 2>/dev/null)"
+  [ -n "$pane" ] && "$herdr_bin" pane rename "$pane" "Preview: $label" >/dev/null 2>&1
+  return 0
+}
+
+# pad_to_pane_height: stdin -> stdout, appending blank rows until the
+# stream is at least a pane tall. A herdr pane renders bottom-anchored, so
+# content shorter than the pane sits at the BOTTOM with blank rows above it
+# (reproduced with a bare `printf | less` in a fresh pane, so it is the
+# pane's behaviour, not ours). Padding at END streams: nothing is buffered,
+# the blank rows are appended only once the real output has ended.
+# _pane_rows: the pane's real height. NOT `tput lines`: tput reads the size
+# off stdout, so anywhere stdout is a pipe (inside a pipeline) or a command
+# substitution (which pipes stdout by definition) it silently returns the
+# terminfo default 24 instead of the true height. /dev/tty is the pane's
+# controlling terminal regardless of how stdout is redirected.
+_pane_rows() {
+  local sz
+  # The outer redirect silences bash's own "/dev/tty: Device not
+  # configured" when there is no controlling terminal (tests, CI, a
+  # non-interactive shell); stty's 2>/dev/null cannot cover that.
+  { sz="$(stty size </dev/tty)"; } 2>/dev/null || sz=""
+  sz="${sz%% *}"
+  case "$sz" in '' | *[!0-9]*) sz="${LINES:-0}" ;; esac
+  case "$sz" in '' | *[!0-9]*) sz=0 ;; esac
+  printf '%s' "$sz"
+}
+
+pad_to_pane_height() {
+  local rows
+  rows="$(_pane_rows)"
+  awk -v rows="$rows" '{ print; n++ } END { while (rows > 1 && n < rows - 1) { print ""; n++ } }'
+}
+
 # pager_prompt_args [prefix] -> sets the fixed global PAGER_PROMPT_ARGS to the `less`
 # prompt flag that paints the key footer along the bottom line, or to an
 # empty array when QUICKLOOK_KEY_HINT is blank (the opt-out). A fixed output
@@ -350,7 +410,12 @@ debug_log() {
 # is not ours to constrain. The hint carries no `%`, so none of less's
 # prompt escapes can fire on it.
 pager_prompt_args() {
-  local prefix="${1:-}"
+  # `less -P` prompt syntax eats . : ? % and \ (a bare "." terminates a ?x
+  # conditional), which silently ate the dot in "short-demo.txt". Escape
+  # them so the object name renders literally.
+  local name="${QUICKLOOK_OBJECT_LABEL:-}"
+  [ -z "$name" ] || name="$(printf '%s' "$name" | sed 's/[.:?%\\]/\\&/g')"
+  local prefix="${1:-${name:+$name · }}"
   PAGER_PROMPT_ARGS=()
   [ -n "${QUICKLOOK_KEY_HINT:-}" ] || return 0
   PAGER_PROMPT_ARGS=("-Ps${prefix}$QUICKLOOK_KEY_HINT")
@@ -705,7 +770,14 @@ render_command_in_pager() {
   # subprocess - termenv-based tools (glow/glamour) drop to a no-color
   # profile when stdout is a pipe even with an explicit style; harmless to
   # bat/delta/jq, which force color via their own flags.
-  CLICOLOR_FORCE=1 "$@" 2>&1 | less -R "${lesskey_args[@]}" "${PAGER_PROMPT_ARGS[@]}"
+  # Pad short output up to the pane height before paging. A herdr pane
+  # renders bottom-anchored, so content shorter than the pane sits at the
+  # BOTTOM with blank rows above it (reproduced with a bare
+  # `printf | less` in a fresh pane, so this is the pane's behaviour, not
+  # ours). Padding at END keeps the stream streaming: nothing is buffered,
+  # the blank rows are only appended once the real output has ended.
+  CLICOLOR_FORCE=1 "$@" 2>&1 | pad_to_pane_height \
+    | less -R "${lesskey_args[@]}" "${PAGER_PROMPT_ARGS[@]}"
 }
 
 # resolve_any_token <raw> -> see the handler-registry contract at the top of

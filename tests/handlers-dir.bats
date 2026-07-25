@@ -182,7 +182,11 @@ teardown() {
   # the directory never appears as a trailing `less` file argument - that
   # would be the exec-less-on-a-directory bug the viewer/command arms exist
   # to prevent; it's piped into less's stdin instead.
-  [[ "$output" != *"LESS_ARGS:"*"adir"* ]]
+  # "adir" may legitimately appear INSIDE the -Ps footer prompt (it names
+  # the previewed object); what must never happen is less receiving the
+  # directory as a trailing FILE argument.
+  [[ "$output" != *" adir" ]]
+  [[ "$output" != *" adir "* ]]
 }
 
 # ---- viewer-root helper: open-in-viewer.sh drives the real file-viewer
