@@ -148,15 +148,18 @@
 # -----------------------------------------------------------------------
 
 # herdr_bin: HERDR_BIN_PATH (herdr's own convention) wins, else a bare
-# `herdr` off PATH. The bare name is NOT safe to assume inside a pane: the
-# server is often launched with a minimal PATH (measured on macOS:
-# /usr/bin:/bin:/usr/sbin:/sbin, no /opt/homebrew/bin), and every pane and
-# action it spawns inherits that. A plugin script that cannot reach `herdr`
-# does not fail loudly - it silently loses the .env, the plugin roots, and
-# the dir-handler's viewer gate, so a DIRECTORY degrades to a tree listing
-# in the popup instead of opening the real file viewer. Probe once here and
-# fall back to the usual install locations so pane context matches shell
-# context.
+# `herdr` off PATH, with an absolute fallback if PATH cannot see it.
+#
+# INSURANCE, not a fix for an observed failure - be honest about what was
+# measured. The herdr SERVER process does run with a minimal PATH
+# (/usr/bin:/bin:/usr/sbin:/sbin on macOS, no /opt/homebrew/bin), which is
+# what motivated this. But a spawned ACTION was later measured with the
+# full login PATH, so herdr evidently does not simply hand its own env
+# down, and the mis-routed-directory bug this was written for turned out to
+# have an unrelated cause. The fallback is kept because a script that
+# cannot reach `herdr` fails SILENTLY (it loses the .env, the plugin roots
+# and the viewer gate), which is an expensive failure mode for two cheap
+# lines - not because a pane was ever proven to lack it.
 herdr_bin="${HERDR_BIN_PATH:-herdr}"
 if ! command -v "$herdr_bin" >/dev/null 2>&1; then
   for _herdr_cand in \
@@ -322,7 +325,22 @@ viewer_bin() {
 # reading the footer never presses a key that does nothing.
 QUICKLOOK_KEY_HINT='q quit · o viewer · e edit · D diff · / search · space page'
 
-# pager_prompt_args -> sets the fixed global PAGER_PROMPT_ARGS to the `less`
+# debug_log <tag> <field>... : one line to ~/.config/herdr/quicklook-debug.log
+# when QUICKLOOK_DEBUG_LOG is set, else nothing. The fields carry UNTRUSTED
+# on-screen/clipboard text, so control bytes are stripped (a raw newline
+# would forge extra log lines) and the file is created private: it records
+# whatever token happened to be picked, which may be sensitive.
+# Append-only with no rotation, so it is opt-in and meant to be turned back
+# off once a routing question is answered.
+debug_log() {
+  [ -n "${QUICKLOOK_DEBUG_LOG:-}" ] || return 0
+  local dir="$HOME/.config/herdr" line
+  line="$(printf '%s %s' "$(date +%T)" "$*" | tr -d '\n\r\t')"
+  ( umask 077; mkdir -p "$dir" 2>/dev/null; printf '%s\n' "$line" >> "$dir/quicklook-debug.log" ) 2>/dev/null || true
+  return 0
+}
+
+# pager_prompt_args [prefix] -> sets the fixed global PAGER_PROMPT_ARGS to the `less`
 # prompt flag that paints the key footer along the bottom line, or to an
 # empty array when QUICKLOOK_KEY_HINT is blank (the opt-out). A fixed output
 # global, not a nameref: Apple's bash is 3.2, which has no `local -n` (same
@@ -332,8 +350,10 @@ QUICKLOOK_KEY_HINT='q quit · o viewer · e edit · D diff · / search · space 
 # is not ours to constrain. The hint carries no `%`, so none of less's
 # prompt escapes can fire on it.
 pager_prompt_args() {
+  local prefix="${1:-}"
   PAGER_PROMPT_ARGS=()
-  [ -n "${QUICKLOOK_KEY_HINT:-}" ] && PAGER_PROMPT_ARGS=("-Ps$QUICKLOOK_KEY_HINT")
+  [ -n "${QUICKLOOK_KEY_HINT:-}" ] || return 0
+  PAGER_PROMPT_ARGS=("-Ps${prefix}$QUICKLOOK_KEY_HINT")
   return 0
 }
 

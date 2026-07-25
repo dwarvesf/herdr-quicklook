@@ -33,8 +33,13 @@ if [ "\$1" = "plugin" ] && [ "\$2" = "action" ] && [ "\$3" = "list" ]; then
   [ "\${HERDR_VIEWER_INSTALLED:-0}" = "1" ] && exit 0
   exit 1
 fi
-if [ "\$1" = "plugin" ] && [ "\$2" = "pane" ] && [ "\$3" = "open" ]; then
-  [ "\${HERDR_PANE_OPEN_FAIL:-0}" = "1" ] && exit 1
+if [ "\$1" = "tab" ] && [ "\$2" = "create" ]; then
+  [ "\${HERDR_TAB_CREATE_FAIL:-0}" = "1" ] && exit 1
+  # real herdr prints the new tab's JSON; the faithful jq stub keys off it
+  printf '{"result":{"root_pane":{"pane_id":"VIEWTAB"}}}\n'
+fi
+if [ "\$1" = "pane" ] && [ "\$2" = "run" ]; then
+  [ "\${HERDR_PANE_RUN_FAIL:-0}" = "1" ] && exit 1
 fi
 exit 0
 HERDR
@@ -45,7 +50,9 @@ HERDR
 #!/usr/bin/env bash
 case "$*" in
   *".result.pane.pane_id"*) printf 'STUBPANE\n' ;;
-  *"root_pane.pane_id"*) printf 'VIEWTAB\n' ;;
+  *"root_pane.pane_id"*)
+    # faithful: a failed `tab create` produces no JSON, so no pane id
+    if [ -n "$(cat)" ]; then printf 'VIEWTAB\n'; fi ;;
   *".label"*) printf 'Files\n' ;;
   *) printf '{}' ;;
 esac
@@ -249,4 +256,29 @@ teardown() {
   [ "$status" -eq 0 ]
   grep -q "notification show quicklook --body file viewer binary not built" "$HLOG"
   ! grep -q "tab create" "$HLOG"
+}
+
+@test "outside target: a failing tab create degrades to the preview, no pane run" {
+  export HERDR_VIEWER_INSTALLED=1 HERDR_TAB_CREATE_FAIL=1
+  mkdir -p "$FIX/vroot/target/release"
+  printf '#!/usr/bin/env bash\n' > "$FIX/vroot/target/release/herdr-file-viewer"
+  chmod +x "$FIX/vroot/target/release/herdr-file-viewer"
+  export QUICKLOOK_VIEWER_ROOT="$FIX/vroot"
+  export QUICKLOOK_TOKEN="$FIX/outside/adir"
+  run bash "$VIEWER"
+  [ "$status" -eq 0 ]
+  grep -q "notification show quicklook --body could not open a viewer tab" "$HLOG"
+  ! grep -q "pane run" "$HLOG"
+}
+
+@test "outside target: a failing pane run reports it and exits nonzero" {
+  export HERDR_VIEWER_INSTALLED=1 HERDR_PANE_RUN_FAIL=1
+  mkdir -p "$FIX/vroot/target/release"
+  printf '#!/usr/bin/env bash\n' > "$FIX/vroot/target/release/herdr-file-viewer"
+  chmod +x "$FIX/vroot/target/release/herdr-file-viewer"
+  export QUICKLOOK_VIEWER_ROOT="$FIX/vroot"
+  export QUICKLOOK_TOKEN="$FIX/outside/adir"
+  run bash "$VIEWER"
+  [ "$status" -eq 1 ]
+  grep -q "notification show quicklook --body file viewer did not start" "$HLOG"
 }

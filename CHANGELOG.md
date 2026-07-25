@@ -2,6 +2,18 @@
 
 ## Unreleased
 
+- Fixed a line-jump regression: the bat filter briefly ran with a `header`
+  row, and `less +N` counts lines in the FILTERED stream, so every
+  `path:N` open landed one line off. The style is back to plain `numbers`
+  (which is also what the file viewer itself runs), the filename moved into
+  the pager footer via less's `%f`, and a test now pins one rendered row
+  per source line.
+- Review-batch follow-ups: the control-char filename guard runs before both
+  viewer launch paths; the debug logger is shared, strips control bytes
+  from untrusted token text and creates its log private; comments that
+  asserted a since-disproven "panes get a minimal PATH" theory now say what
+  was actually measured.
+
 - The preview pane now paints a key footer along its bottom line
   (`q quit · o viewer · e edit · D diff · / search · space page`), so the
   bindings are discoverable instead of folklore. It rides less's own short

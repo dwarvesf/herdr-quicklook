@@ -116,9 +116,9 @@ fi
 ) &
 
 # Answer the viewer gate HERE, in the action's own context, and hand the
-# result to the overlay: the pane may not be able to reach `herdr` at all
-# (minimal server PATH), and a failed gate silently downgrades a directory
-# pick from the real file viewer to a tree listing in the popup.
+# result to the overlay: it saves the pane an RPC round trip on the hot
+# pick path, and a failed gate would silently downgrade a directory pick
+# from the real file viewer to a tree listing in the popup.
 viewer_ok=0
 "$herdr_bin" plugin action list --plugin herdr-file-viewer >/dev/null 2>&1 && viewer_ok=1
 
@@ -126,11 +126,7 @@ viewer_ok=0
 # the pane/action environment differs from a shell in ways that silently
 # change routing, and this line is the difference between guessing and
 # knowing which branch a pick took.
-if [ -n "${QUICKLOOK_DEBUG_LOG:-}" ]; then
-  printf '%s hint: viewer_ok=%s herdr_bin=%s path=%s\n' \
-    "$(date +%T)" "$viewer_ok" "$herdr_bin" "$PATH" \
-    >> "$HOME/.config/herdr/quicklook-debug.log" 2>/dev/null || true
-fi
+debug_log "hint: viewer_ok=$viewer_ok herdr_bin=$herdr_bin"
 
 set -- plugin pane open \
   --plugin herdr-quicklook \

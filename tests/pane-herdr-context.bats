@@ -1,12 +1,13 @@
 #!/usr/bin/env bats
-# Pane-context contract: a plugin pane/action is spawned by the herdr server,
-# which commonly has a MINIMAL PATH (measured on macOS: /usr/bin:/bin:
-# /usr/sbin:/sbin). A bare `herdr` is therefore not reachable there, and a
-# silently-failing herdr call downgrades a DIRECTORY token from the real file
-# viewer to a tree listing in the popup. Two independent guards are pinned
-# here: lib.sh resolves herdr_bin to an absolute fallback, and the
-# QUICKLOOK_VIEWER_OK hint (passed by the hint action) short-circuits the
-# gate's RPC entirely.
+# Viewer-gate short-circuit + herdr_bin absolute fallback.
+#
+# HONEST FRAMING: these were written against a theory (panes inherit the
+# herdr server's minimal PATH) that was later DISPROVEN - a spawned action
+# was measured with the full login PATH, and the mis-routed directory bug
+# had an unrelated cause. The behaviour under test is still real and
+# shipped, so the tests stay; they are defensive-fallback tests, NOT a
+# regression net for an observed production failure. Do not cite them as
+# evidence that panes lack PATH entries.
 
 setup() {
   LIB="$BATS_TEST_DIRNAME/../scripts/lib.sh"
@@ -51,6 +52,21 @@ teardown() {
   [[ "$output" == *"MODE=viewer"* ]]
 }
 
-@test "hint action passes the gate answer into the overlay pane" {
-  grep -q 'QUICKLOOK_VIEWER_OK=\$viewer_ok' "$BATS_TEST_DIRNAME/../scripts/hint.sh"
+@test "hint action really forwards the gate answer into the overlay argv" {
+  # was a source grep, which passes even if the flag never reaches herdr;
+  # run the action against a stub herdr and read the argv it actually built.
+  local stub hlog
+  stub="$(mktemp -d)"; hlog="$(mktemp)"
+  cat > "$stub/herdr" <<HERDR
+#!/usr/bin/env bash
+printf '%s\\n' "\$*" >> "$hlog"
+exit 0
+HERDR
+  chmod +x "$stub/herdr"
+  printf '#!/usr/bin/env bash\nprintf "{}"\n' > "$stub/jq"; chmod +x "$stub/jq"
+  printf '#!/usr/bin/env bash\nexit 0\n' > "$stub/pbpaste"; chmod +x "$stub/pbpaste"
+  PATH="$stub:/usr/bin:/bin" HERDR_BIN_PATH="$stub/herdr" \
+    run bash "$BATS_TEST_DIRNAME/../scripts/hint.sh"
+  grep -q -- "--env QUICKLOOK_VIEWER_OK=" "$hlog"
+  rm -rf "$stub"
 }
