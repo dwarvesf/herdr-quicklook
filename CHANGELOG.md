@@ -2,6 +2,14 @@
 
 ## Unreleased
 
+- The previewed object's name moved into the pane border ("Preview:
+  vcs.sh", "Preview: PR #65"), and bat's filename header row is gone with
+  it. The name now costs no content row, cannot wrap onto a second line,
+  and no longer shifts `path:N` jumps, so the jump compensation that
+  header needed is deleted too.
+- Glob patterns stop offering an open that always fails: `scripts/*.sh`
+  hints the directory that contains it, and a bare `*.sh` is dropped.
+
 - PR previews read like a document: a title row on top (`PR #65 · <title>
   [MERGED]`), gh's always-printed-but-empty fields (labels, assignees,
   reviewers, projects, milestone) dropped, and a rule between the metadata

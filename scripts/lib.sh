@@ -1333,6 +1333,18 @@ pick_scan_text() {
         if (match(s, /^[A-Za-z_][A-Za-z0-9_]*=/)) {
           s = substr(s, RLENGTH + 1)
         }
+        # Glob patterns (`scripts/*.sh` in a shellcheck command line) name
+        # no single file, so hinting them offers an open that always
+        # fails. Point at the DIRECTORY that contains them instead, which
+        # is the useful thing to open; a bare `*.sh` with no directory
+        # part is dropped entirely.
+        if (s ~ /[*?]/) {
+          if (s ~ /\//) {
+            sub(/\/[^\/]*[*?][^\/]*$/, "", s)
+          } else {
+            s = ""
+          }
+        }
         # UNMATCHED wrapper: prose like "(assets/style.json copied ...)"
         # whitespace-splits the opener onto the span with its closer words
         # away, so the matched rule above never fires. An opener whose

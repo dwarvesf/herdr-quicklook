@@ -32,4 +32,23 @@ if [ -n "${QUICKLOOK_PREVIEW_CWD:-$PWD}" ]; then
   set -- "$@" --env "QUICKLOOK_PREVIEW_CWD=${QUICKLOOK_PREVIEW_CWD:-$PWD}"
 fi
 
-exec "$herdr_bin" "$@"
+# Not exec: the pane's LABEL is what the border shows, so name it after the
+# object being previewed ("Preview: vcs.sh") instead of a generic "Preview".
+# That is also why the renderer no longer draws a filename header row - the
+# name lives in the chrome, where it costs no content line and cannot wrap.
+out="$("$herdr_bin" "$@" 2>/dev/null)" || exit 0
+printf '%s' "$out"
+
+case "$token" in
+  '#'*) label="PR ${token%% *}" ;;
+  https://github.com/*/pull/*) label="PR #${token##*/}" ;;
+  *) label="${token##*/}"; [ -n "$label" ] || label="$token" ;;
+esac
+# strip a :line suffix so the label stays the object's name
+label="${label%%:*}"
+
+if [ -n "$label" ] && command -v jq >/dev/null 2>&1; then
+  pane="$(printf '%s' "$out" | jq -r '.result.plugin_pane.pane.pane_id // empty' 2>/dev/null)"
+  [ -n "$pane" ] && "$herdr_bin" pane rename "$pane" "Preview: $label" >/dev/null 2>&1
+fi
+exit 0
