@@ -292,6 +292,13 @@ printf '%s' "$frame"
 open_pick() {
   local i="$1"
   cleanup
+  if [ -n "${QUICKLOOK_DEBUG_LOG:-}" ]; then
+    resolve_any_token "${tokens[$i]}" 2>/dev/null
+    printf '%s pick: tok=%s mode=%s viewer_ok=%s target=%s\n' \
+      "$(date +%T)" "${tokens[$i]}" "${RESOLVED_MODE:-none}" \
+      "${QUICKLOOK_VIEWER_OK:-unset}" "${RESOLVED_TARGET:-none}" \
+      >> "$HOME/.config/herdr/quicklook-debug.log" 2>/dev/null || true
+  fi
   if resolve_any_token "${tokens[$i]}" 2>/dev/null && [ "${RESOLVED_MODE:-}" = "viewer" ]; then
     export QUICKLOOK_KEEP_CWD=1
     exec bash "$script_dir/open-in-viewer.sh" "${tokens[$i]}"
