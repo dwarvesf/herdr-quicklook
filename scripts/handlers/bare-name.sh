@@ -13,20 +13,50 @@
 
 match_bare_name() { return 1; }
 
+# _bare_name_sweep <clip_path> <current-root> -> ABSOLUTE-path matches, one
+# per line, from the tracked files of every first-level child repo of every
+# QUICKLOOK_ROOTS entry (implicit parents + plugin roots included), skipping
+# the current repo (already searched). Only runs after the current-repo
+# search found nothing, and stays bounded: one .git stat per child, one
+# ls-files per actual repo, 100 lines total.
+_bare_name_sweep() {
+  local clip_path="$1" cur="$2" r d
+  local IFS=':'
+  for r in ${QUICKLOOK_ROOTS:-}; do
+    [ -n "$r" ] && [ -d "$r" ] || continue
+    for d in "$r"/*/; do
+      d="${d%/}"
+      [ "$d" = "$cur" ] && continue
+      [ -e "$d/.git" ] || continue
+      git -C "$d" ls-files 2>/dev/null | grep -iF -- "$clip_path" \
+        | while IFS= read -r m; do printf '%s/%s\n' "$d" "$m"; done
+    done
+  done | awk '!seen[$0]++' | head -100
+}
+
 # handle_bare_name <clip_path> -> a single or fzf-picked match: sets
-# RESOLVED_TARGET (mode=file) and returns 0. Zero matches, no repo root, or
-# an fzf cancel: returns 1 (caller shows its own "not found"). Multiple
-# matches with no fzf installed: prints the candidate list itself and exits
-# the CALLING SCRIPT directly, exactly matching the pre-refactor inline
-# behavior.
+# RESOLVED_TARGET (mode=file) and returns 0. Searches the current repo's
+# tracked files first; on zero hits there (or no current repo) widens to the
+# workspace sweep above. Zero matches everywhere or an fzf cancel: returns 1
+# (caller shows its own "not found"). Multiple matches with no fzf
+# installed: prints the candidate list itself and exits the CALLING SCRIPT
+# directly, exactly matching the pre-refactor inline behavior.
 handle_bare_name() {
-  local clip_path="$1" root matches n pick
-  root="$(git rev-parse --show-toplevel 2>/dev/null)"
-  [ -z "$root" ] && return 1
-  matches="$(git -C "$root" ls-files 2>/dev/null | grep -iF -- "$clip_path" | head -100)"
+  local clip_path="$1" root matches n pick scope join
+  root="$(git rev-parse --show-toplevel 2>/dev/null)" || root=""
+  matches=""
+  scope="this repo"
+  join="$root/"
+  [ -n "$root" ] && matches="$(git -C "$root" ls-files 2>/dev/null | grep -iF -- "$clip_path" | head -100)"
+  if [ -z "$matches" ]; then
+    # widen: sibling repos' tracked files, absolute paths (no join prefix)
+    matches="$(_bare_name_sweep "$clip_path" "$root")"
+    scope="the workspace"
+    join=""
+  fi
   n="$(printf '%s' "$matches" | grep -c . 2>/dev/null)"
   if [ "$n" -eq 1 ]; then
-    RESOLVED_TARGET="$root/$matches"
+    RESOLVED_TARGET="$join$matches"
     RESOLVED_LINE=""
     RESOLVED_MODE="file"
     return 0
@@ -34,12 +64,12 @@ handle_bare_name() {
     if command -v fzf >/dev/null 2>&1; then
       pick="$(printf '%s\n' "$matches" | fzf --prompt="$clip_path ▸ " --reverse --cycle --height=100%)" || exit 0
       [ -z "$pick" ] && return 1
-      RESOLVED_TARGET="$root/$pick"
+      RESOLVED_TARGET="$join$pick"
       RESOLVED_LINE=""
       RESOLVED_MODE="file"
       return 0
     else
-      printf '%s matches "%s" in this repo (install fzf for an interactive pick):\n\n' "$n" "$clip_path"
+      printf '%s matches "%s" in %s (install fzf for an interactive pick):\n\n' "$n" "$clip_path" "$scope"
       printf '%s\n' "$matches"
       printf '\n'
       read -r -n1 -p "press any key to close" _ 2>/dev/null || sleep 2
