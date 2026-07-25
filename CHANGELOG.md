@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+- open-in-viewer no longer refuses a target outside the focused pane's repo:
+  a cross-repo path (e.g. a cockpit row pointing into a sibling repo) opens a
+  fresh viewer tab rooted at the target's own repo via `pane open --cwd`,
+  then gotos the file as usual. Non-repo targets root at their directory.
+
 - Markdown (and docx/xlsx/ipynb via the same path) no longer wraps at glow's
   hard piped default of 80 columns: `render_markdown` measures the pane's TTY
   and passes `-w`, so wide panes stop showing ragged orphan line fragments.
