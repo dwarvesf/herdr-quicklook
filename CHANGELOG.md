@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+- PR previews read like a document: a title row on top (`PR #65 · <title>
+  [MERGED]`), gh's always-printed-but-empty fields (labels, assignees,
+  reviewers, projects, milestone) dropped, and a rule between the metadata
+  and the rendered body.
+
 - Fixed a line-jump regression: the bat filter briefly ran with a `header`
   row, and `less +N` counts lines in the FILTERED stream, so every
   `path:N` open landed one line off. The style is back to plain `numbers`
