@@ -190,20 +190,20 @@ teardown() {
   grep -qF "pane send-keys STUBPANE Enter" "$HLOG"
 }
 
-@test "a directory outside the repo re-roots a fresh viewer tab at it (no goto: it IS the root)" {
+@test "a directory outside the repo hands off to the preview, never a broken re-root" {
   export HERDR_VIEWER_INSTALLED=1
   export QUICKLOOK_TOKEN="$FIX/outside/adir"
   run bash "$VIEWER"
   [ "$status" -eq 0 ]
-  # not a git repo, so the root is the directory itself, passed as --cwd
-  grep -qF -- "--cwd $FIX/outside/adir" "$HLOG"
-  # the idempotent tab action would reuse a wrong-root tab; must not be used
-  ! grep -q "action invoke open-file-viewer-tab" "$HLOG"
-  # target IS the root: no goto keys
+  grep -q "notification show quicklook --body outside this repo" "$HLOG"
+  # the viewer cannot be re-rooted: --cwd breaks its spawn (relative pane
+  # command), so it must never be attempted again. See open-in-viewer.sh.
+  ! grep -q -- "--cwd" "$HLOG"
+  ! grep -q "plugin pane open" "$HLOG"
   ! grep -q "pane send-text" "$HLOG"
 }
 
-@test "a file in a SIBLING repo re-roots the viewer at that repo and gotos the rel path" {
+@test "a file in a SIBLING repo hands off to the preview, no viewer keystrokes" {
   mkdir -p "$FIX/sibling/docs"
   git -C "$FIX/sibling" init -q -b main
   printf 'x\n' > "$FIX/sibling/docs/note.md"
@@ -211,33 +211,7 @@ teardown() {
   export QUICKLOOK_TOKEN="$FIX/sibling/docs/note.md"
   run bash "$VIEWER"
   [ "$status" -eq 0 ]
-  grep -qF -- "--cwd $FIX/sibling" "$HLOG"
-  grep -qF "pane send-text STUBPANE docs/note.md" "$HLOG"
-  grep -qF "pane send-keys STUBPANE Enter" "$HLOG"
-  # the re-root is announced, never silent (scope widened outside the repo)
-  grep -q "notification show quicklook --body viewer re-rooted at" "$HLOG"
-}
-
-@test "a sibling-repo file WITH a line number re-roots and sends the :N goto" {
-  mkdir -p "$FIX/sibling/docs"
-  git -C "$FIX/sibling" init -q -b main 2>/dev/null || true
-  printf 'x\ny\nz\n' > "$FIX/sibling/docs/lined.md"
-  export HERDR_VIEWER_INSTALLED=1
-  export QUICKLOOK_TOKEN="$FIX/sibling/docs/lined.md:7"
-  run bash "$VIEWER"
-  [ "$status" -eq 0 ]
-  grep -qF -- "--cwd $FIX/sibling" "$HLOG"
-  grep -qF "pane send-text STUBPANE docs/lined.md" "$HLOG"
-  grep -qF "pane send-text STUBPANE :" "$HLOG"
-  grep -qF "pane send-text STUBPANE 7" "$HLOG"
-}
-
-@test "cross-repo re-root: a failing pane open notifies and exits 1" {
-  export HERDR_VIEWER_INSTALLED=1
-  export HERDR_PANE_OPEN_FAIL=1
-  export QUICKLOOK_TOKEN="$FIX/outside/adir"
-  run bash "$VIEWER"
-  [ "$status" -eq 1 ]
-  grep -q "notification show quicklook --body file viewer did not open (cross-repo)" "$HLOG"
+  grep -q "notification show quicklook --body outside this repo" "$HLOG"
+  ! grep -q -- "--cwd" "$HLOG"
   ! grep -q "pane send-text" "$HLOG"
 }
