@@ -28,6 +28,11 @@ match_render_markdown() {
 # every other render_<kind> but unused - glow has no line-jump, so a
 # best-effort render (not an error) is the contract here.
 render_markdown() {
-  local target="$1"
-  render_command_in_pager glow -s auto -- "$target"
+  local target="$1" cols
+  # glow's stdout is a PIPE inside render_command_in_pager, so its auto
+  # width is a hard 80 no matter how wide the pane is; source lines wider
+  # than 80 then double-wrap into ragged orphan fragments. stdout here is
+  # still the pane's TTY, so measure it and pass the width explicitly.
+  cols="$(tput cols 2>/dev/null)" || cols=80
+  render_command_in_pager glow -s auto -w "${cols:-80}" -- "$target"
 }
