@@ -256,6 +256,36 @@ load_config() {
   [ -n "$dir" ] || dir="$("$herdr_bin" plugin config-dir herdr-quicklook 2>/dev/null)"
   # shellcheck disable=SC1091
   [ -n "$dir" ] && [ -f "$dir/.env" ] && . "$dir/.env"
+  augment_roots
+}
+
+# augment_roots: append the current repo root's parents (1..N levels, N =
+# QUICKLOOK_PARENT_SWEEP, default 2, 0 disables) to QUICKLOOK_ROOTS, deduped.
+# Side-by-side repo layouts (~/ws/<repo>, ~/ws/<org>/<repo>) then resolve
+# cross-repo tokens with ZERO config: every existing roots loop (resolve,
+# dir/github handlers, the pick mirrors) picks the parents up unchanged.
+# Still bounded: each added root costs one stat per first-level child, and
+# only on a full miss of every earlier rung.
+augment_roots() {
+  local levels="${QUICKLOOK_PARENT_SWEEP:-2}" base up=0 r found
+  case "$levels" in '' | *[!0-9]*) levels=2 ;; esac
+  [ "$levels" -eq 0 ] && return 0
+  base="$(git rev-parse --show-toplevel 2>/dev/null)"
+  [ -z "$base" ] && base="$PWD"
+  while [ "$up" -lt "$levels" ]; do
+    base="${base%/*}"
+    up=$((up + 1))
+    [ -n "$base" ] && [ -d "$base" ] || break
+    found=0
+    local IFS=':'
+    for r in ${QUICKLOOK_ROOTS:-}; do
+      [ "$r" = "$base" ] && { found=1; break; }
+    done
+    unset IFS
+    [ "$found" -eq 1 ] && continue
+    QUICKLOOK_ROOTS="${QUICKLOOK_ROOTS:+$QUICKLOOK_ROOTS:}$base"
+  done
+  return 0
 }
 
 # Single-char hint keys for the native `hint` overlay, home-row first so the

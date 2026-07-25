@@ -37,10 +37,12 @@ script_dir="$(cd "$(dirname "${BASH_SOURCE[0]:-$0}")" && pwd)"
 # shellcheck source=scripts/lib.sh
 . "$script_dir/lib.sh"
 
-load_config
-
+# No-arg is a no-op; bail before load_config so the no-op stays truly free
+# (load_config's augment_roots forks a git rev-parse).
 file="${1:-}"
 [ -z "$file" ] && exit 0
+
+load_config
 
 repo_dir="$(dirname "$file")"
 diff_output="$(git -C "$repo_dir" diff --color=always -- "$file" 2>/dev/null)"

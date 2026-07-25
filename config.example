@@ -11,6 +11,18 @@
 # adding it here lets that path resolve to ~/workspace/myrepo/docs/notes.md.
 #QUICKLOOK_ROOTS="$HOME/workspace:$HOME/src"
 
+# QUICKLOOK_PARENT_SWEEP: how many parent levels of the current repo root are
+# added as IMPLICIT roots (side-by-side repo layouts then resolve cross-repo
+# tokens with zero config). Default 2 (parent + grandparent); 0 disables,
+# leaving only the explicit QUICKLOOK_ROOTS above.
+#QUICKLOOK_PARENT_SWEEP=2
+
+# QUICKLOOK_GLOW_STYLE: glow style for markdown previews, a glow style name
+# ("dark", "dracula", ...) or a path to a glow style JSON file. Unset, the
+# preview picks up herdr-file-viewer's bundled markdown palette when that
+# plugin is installed (so preview and viewer look identical), else "auto".
+#QUICKLOOK_GLOW_STYLE=
+
 # QUICKLOOK_EDITOR: command launched by `e` in the preview overlay, at the
 # current file+line. Precedence: this key > $EDITOR > "zed --wait". Set this
 # instead of (or in addition to) exporting $EDITOR in your shell: the herdr

@@ -2,6 +2,15 @@
 
 ## Unreleased
 
+- Markdown previews pick up herdr-file-viewer's bundled color palette when
+  that plugin is installed, so the preview overlay and the viewer render
+  markdown identically; `QUICKLOOK_GLOW_STYLE` (a glow style name or JSON
+  file) overrides, fallback stays `auto`.
+- Implicit workspace roots: the current repo root's parent and grandparent
+  (`QUICKLOOK_PARENT_SWEEP`, default 2, 0 disables) are appended to
+  `QUICKLOOK_ROOTS` at config load, so side-by-side repo layouts resolve
+  cross-repo tokens with zero configuration on any machine.
+
 - open-in-viewer no longer refuses a target outside the focused pane's repo:
   a cross-repo path (e.g. a cockpit row pointing into a sibling repo) opens a
   fresh viewer tab rooted at the target's own repo via `pane open --cwd`,
