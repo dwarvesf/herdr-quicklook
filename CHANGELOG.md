@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 0.6.0 (2026-07-26)
 
 - `git show` renders in colour again. git only colourises when stdout is a
   TTY and the renderer pipes it into less, so a commit diff arrived plain
@@ -14,7 +14,6 @@
   visible part is an exact prefix, so it expands when exactly one file or
   directory matches (an ambiguous prefix is left alone rather than
   guessed).
-
 - The previewed object's name now shows in the pager footer
   ("vcs.sh . q quit . o viewer ..."). A plugin pane's border is drawn from
   the manifest title and ignores the pane label, so the border cannot
@@ -25,12 +24,10 @@
   the bottom with blank rows above them.
 - Glob patterns stop offering an open that always fails: `scripts/*.sh`
   hints the directory that contains it, and a bare `*.sh` is dropped.
-
 - PR previews read like a document: a title row on top (`PR #65 · <title>
   [MERGED]`), gh's always-printed-but-empty fields (labels, assignees,
   reviewers, projects, milestone) dropped, and a rule between the metadata
   and the rendered body.
-
 - Fixed a line-jump regression: the bat filter briefly ran with a `header`
   row, and `less +N` counts lines in the FILTERED stream, so every
   `path:N` open landed one line off. The style is back to plain `numbers`
@@ -42,14 +39,12 @@
   from untrusted token text and creates its log private; comments that
   asserted a since-disproven "panes get a minimal PATH" theory now say what
   was actually measured.
-
 - The preview pane now paints a key footer along its bottom line
   (`q quit · o viewer · e edit · D diff · / search · space page`), so the
   bindings are discoverable instead of folklore. It rides less's own short
   prompt, so scrolling and the render registry are untouched, and the
   nested diff view gets its own footer because its keys differ. Hide it
   with an empty `QUICKLOOK_KEY_HINT`.
-
 - A folder picked anywhere now opens in the file viewer, rooted at that
   folder, even outside the current repo. The plugin's own pane action can
   only ever root at the focused pane, so an outside target instead gets a
@@ -58,7 +53,6 @@
   viewer roots at its own cwd. A file+line jump rides the viewer's
   `HERDR_FILE_VIEWER_OPEN` launch target, so that path needs no keystroke
   injection. Falls back to the preview when the viewer binary is not built.
-
 - Reverted the cross-repo viewer re-root: it could never work. The viewer's
   manifest pane command is relative, so `pane open --cwd <dir>` made herdr
   look for its binary under that dir and the spawn failed outright; an
@@ -66,7 +60,6 @@
   ignored. The viewer always roots at the focused pane's repo. A target
   outside it now goes to the preview popup (which renders any path) with a
   notice, instead of a failed spawn.
-
 - A DIRECTORY picked from the hint overlay opens the real file viewer again
   instead of a tree listing in the popup. The herdr server often runs with a
   minimal PATH, so a bare `herdr` is unreachable from the panes and actions
@@ -75,7 +68,6 @@
   PATH cannot see it (and exports it to exec'd children), and the hint action
   answers the gate in its own context, passing QUICKLOOK_VIEWER_OK into the
   overlay so the routing decision needs no pane-side RPC at all.
-
 - Review-batch fixes (advisor + security/architecture/test lenses over the
   session): escalate-editor/find-pane/recents-pane load env-only config (no
   wasted git+herdr forks); augment_roots' one plugin-list fork also captures
@@ -85,26 +77,24 @@
   tty fallback probes openability (bare -r passes with no controlling tty).
   New tests: hint-pane bottom-align (headless stty stub), glow -w width,
   CLICOLOR_FORCE, viewer re-root failure + :line goto, oversized sweep guard.
-
 - The hint overlay bottom-aligns the snapshot: the origin pane anchors its
   content to the bottom rows, so a snapshot shorter than the overlay pads
   blank rows on TOP instead of floating up and leaving a blank band below.
   Extras rows shrink the pad, mouse-click rows shift with it, and each
   repainted row clears to EOL so the shifted repaint leaves no tails.
-
 - Viewer display parity for code: the bat theme pin is gone, so the user's
   own bat config decides the theme in BOTH panes (exactly how
   herdr-file-viewer invokes bat); QUICKLOOK_BAT_THEME now only adds a
   --theme flag when explicitly set. Renderer subprocesses get
   CLICOLOR_FORCE=1 (the viewer's trick) so piped tools keep full color.
   Code style is numbers,header (the viewer's gutter + a filename header).
-
 - The hint scanner trims UNMATCHED wrapping punctuation: prose like
   `(assets/markdown-style.json copied ...)` splits the opener onto the span
   with its closer words away, so the token kept a leading `(` and never
   resolved. An opener with no closer in the span comes off the left, a
   closer with no opener off the right; spans holding both (`foo(1).md`,
   wiki-style URLs) stay untouched.
+
 
 ## 0.5.0 (2026-07-26)
 
