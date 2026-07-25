@@ -67,8 +67,13 @@ q quit
 d quit
 LESSKEY
 
+# The nested view's own footer: its keys are NOT the preview's (q, d and
+# Esc-Esc all toggle back per the lesskey above), so it never advertises
+# the preview's o/e/D set.
+diff_prompt="-Psq or d: back to preview · / search"
+
 if command -v delta >/dev/null 2>&1; then
-  printf '%s\n' "$diff_output" | delta --paging=never | less -R --lesskey-src="$diff_lesskey"
+  printf '%s\n' "$diff_output" | delta --paging=never | less -R --lesskey-src="$diff_lesskey" "$diff_prompt"
 else
-  printf '%s\n' "$diff_output" | less -R --lesskey-src="$diff_lesskey"
+  printf '%s\n' "$diff_output" | less -R --lesskey-src="$diff_lesskey" "$diff_prompt"
 fi
