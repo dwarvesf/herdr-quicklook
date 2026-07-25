@@ -625,3 +625,42 @@ SCRIPT
   run pick_scan_text <<<'run *.md now'
   [[ "$output" != *"*.md"* ]]
 }
+
+# ---- shell syntax is not a filename ----
+
+@test "pick_scan_text: a redirect target /dev/null is not offered" {
+  mkdir -p "$FIX/repo/.githooks"
+  run pick_scan_text <<<'ls .githooks 2>/dev/null)'
+  [[ "$output" != *"/dev/null"* ]]
+  [[ "$output" == *".githooks"* ]]
+}
+
+@test "pick_scan_text: an unclosed call wrapper hints the path, not the verb" {
+  run pick_scan_text <<<"Bash(S=$FIX/repo/sub"
+  [[ "$output" != *"Bash("* ]]
+  [[ "$output" == *"$FIX/repo/sub"* ]]
+}
+
+# ---- a transcript-elided path still opens ----
+
+@test "expand_elided: a unique prefix match expands to the real path" {
+  mkdir -p "$FIX/sess-abc123def"
+  run expand_elided "$FIX/sess-abc123…"
+  [ "$output" = "$FIX/sess-abc123def" ]
+}
+
+@test "expand_elided: an ambiguous prefix is left alone rather than guessed" {
+  mkdir -p "$FIX/amb-one" "$FIX/amb-two"
+  run expand_elided "$FIX/amb-…"
+  [ "$output" = "$FIX/amb-…" ]
+}
+
+@test "expand_elided: a token with no ellipsis is untouched" {
+  run expand_elided "scripts/lib.sh"
+  [ "$output" = "scripts/lib.sh" ]
+}
+
+@test "pad_left: indents every row without disturbing the row count" {
+  run bash -c ". '$LIB'; printf 'a\nb\n' | pad_left"
+  [ "$output" = "$(printf '  a\n  b')" ]
+}

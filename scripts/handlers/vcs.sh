@@ -94,6 +94,8 @@ handle_vcs() {
       RESOLVED_LINE=""
       RESOLVED_MODE="command"
       # The SHA on screen often belongs to ANOTHER repo (a commit list
+      # color.ui=always because git colours only when stdout is a TTY and
+      # the renderer pipes it into less, so the diff arrived plain white.
       # from a sibling checkout), and `git show` in the pane's own repo
       # answers "fatal: ambiguous argument" instead of rendering it. Find
       # the repo that actually has the object first; bounded, and only
@@ -106,9 +108,9 @@ handle_vcs() {
         repo="$(_vcs_repo_with_commit "$raw" || true)"
       fi
       if [ -n "$repo" ]; then
-        RESOLVED_CMD=(git -C "$repo" show --end-of-options "$raw")
+        RESOLVED_CMD=(git -C "$repo" -c color.ui=always show --end-of-options "$raw")
       else
-        RESOLVED_CMD=(git show --end-of-options "$raw")
+        RESOLVED_CMD=(git -c color.ui=always show --end-of-options "$raw")
       fi
       return 0
       ;;

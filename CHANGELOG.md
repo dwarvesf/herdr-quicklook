@@ -2,6 +2,19 @@
 
 ## Unreleased
 
+- `git show` renders in colour again. git only colourises when stdout is a
+  TTY and the renderer pipes it into less, so a commit diff arrived plain
+  white.
+- Text previews get a left gutter instead of starting flush against the
+  pane border.
+- Shell syntax stops being mistaken for a filename: `2>/dev/null` and any
+  other `/dev/*` device is no longer offered, and a wrapped `Bash(S=/x/y`
+  line hints the path rather than the verb.
+- A path the transcript elided with a trailing ellipsis now opens: the
+  visible part is an exact prefix, so it expands when exactly one file or
+  directory matches (an ambiguous prefix is left alone rather than
+  guessed).
+
 - The previewed object's name now shows in the pager footer
   ("vcs.sh . q quit . o viewer ..."). A plugin pane's border is drawn from
   the manifest title and ignores the pane label, so the border cannot
