@@ -6,6 +6,9 @@
 # 0 disables) and every existing roots loop picks them up unchanged.
 
 setup() {
+  # herdr_bin binds at source time; point it at a failing binary BEFORE
+  # sourcing so the host's real plugin roots never leak into assertions.
+  export HERDR_BIN_PATH=/usr/bin/false
   LIB="$BATS_TEST_DIRNAME/../scripts/lib.sh"
   # shellcheck disable=SC1090
   . "$LIB"
@@ -67,4 +70,28 @@ teardown() {
   augment_roots
   ! resolve "sibling/docs/note.md"
   ! resolve "docs/note.md"
+}
+
+@test "augment_roots: installed herdr plugin roots join the implicit set" {
+  STUB="$(mktemp -d)"
+  mkdir -p "$STUB/proot/assets"
+  printf '{}' > "$STUB/proot/assets/style.json"
+  cat > "$STUB/herdr" <<'SH'
+#!/usr/bin/env bash
+printf '{}'
+SH
+  cat > "$STUB/jq" <<SH
+#!/usr/bin/env bash
+printf '%s\n' "$STUB/proot"
+SH
+  chmod +x "$STUB/herdr" "$STUB/jq"
+  herdr_bin="$STUB/herdr"
+  export PATH="$STUB:$PATH"
+  QUICKLOOK_PARENT_SWEEP=0
+  augment_roots
+  [[ ":$QUICKLOOK_ROOTS:" == *":$STUB/proot:"* ]]
+  # a plugin-relative token (the assets/markdown-style.json case) resolves
+  run resolve "assets/style.json"
+  [ "$status" -eq 0 ]
+  [ "$output" = "$STUB/proot/assets/style.json" ]
 }

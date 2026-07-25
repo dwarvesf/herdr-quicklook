@@ -7,12 +7,16 @@ script_dir="$(cd "$(dirname "${BASH_SOURCE[0]:-$0}")" && pwd)"
 # shellcheck source=scripts/lib.sh
 . "$script_dir/lib.sh"
 
-load_config
+# Env only before the gate: the off mode must exit with ZERO herdr calls
+# (augment_roots makes one for the plugin roots), so roots are augmented
+# only once the mode says this hook will actually do work.
+load_config_env
 mode="${QUICKLOOK_AGENT_SUGGESTIONS:-off}"
 case "$mode" in
   notify | preview) ;;
   *) exit 0 ;;
 esac
+augment_roots
 
 command -v jq >/dev/null 2>&1 || exit 0
 event_json="${HERDR_PLUGIN_EVENT_JSON:-}"

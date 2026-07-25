@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+- Installed herdr plugin roots join the implicit workspace roots, so a
+  plugin-relative token (e.g. `assets/markdown-style.json`) resolves into
+  the plugin's checkout under `~/.config/herdr/plugins/`.
+
 - Markdown previews pick up herdr-file-viewer's bundled color palette when
   that plugin is installed, so the preview overlay and the viewer render
   markdown identically; `QUICKLOOK_GLOW_STYLE` (a glow style name or JSON

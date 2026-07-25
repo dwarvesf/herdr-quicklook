@@ -251,40 +251,63 @@ recents_latest() {
 
 # Optional config: QUICKLOOK_ROOTS, colon-separated extra roots to try for
 # relative paths (e.g. the parent directory holding all your repos).
+# load_config = env + implicit roots. A script whose config gate can decline
+# ALL work (agent-suggest's off mode) calls load_config_env first and
+# augment_roots only past the gate, so the declined path stays subprocess-free.
 load_config() {
+  load_config_env
+  augment_roots
+}
+
+load_config_env() {
   local dir="${HERDR_PLUGIN_CONFIG_DIR:-}"
   [ -n "$dir" ] || dir="$("$herdr_bin" plugin config-dir herdr-quicklook 2>/dev/null)"
   # shellcheck disable=SC1091
   [ -n "$dir" ] && [ -f "$dir/.env" ] && . "$dir/.env"
-  augment_roots
 }
 
-# augment_roots: append the current repo root's parents (1..N levels, N =
-# QUICKLOOK_PARENT_SWEEP, default 2, 0 disables) to QUICKLOOK_ROOTS, deduped.
-# Side-by-side repo layouts (~/ws/<repo>, ~/ws/<org>/<repo>) then resolve
-# cross-repo tokens with ZERO config: every existing roots loop (resolve,
-# dir/github handlers, the pick mirrors) picks the parents up unchanged.
+# _append_root <dir>: append one directory to QUICKLOOK_ROOTS, skipping
+# empties, non-directories, and duplicates. rc 0 always.
+_append_root() {
+  local base="$1" r
+  [ -n "$base" ] && [ -d "$base" ] || return 0
+  local IFS=':'
+  for r in ${QUICKLOOK_ROOTS:-}; do
+    [ "$r" = "$base" ] && return 0
+  done
+  unset IFS
+  QUICKLOOK_ROOTS="${QUICKLOOK_ROOTS:+$QUICKLOOK_ROOTS:}$base"
+}
+
+# augment_roots: append IMPLICIT roots to QUICKLOOK_ROOTS, deduped, so every
+# existing roots loop (resolve, dir/github handlers, the pick mirrors) picks
+# them up unchanged. Two sources:
+#   1. The current repo root's parents (1..N levels, N =
+#      QUICKLOOK_PARENT_SWEEP, default 2, 0 disables): side-by-side repo
+#      layouts (~/ws/<repo>, ~/ws/<org>/<repo>) then resolve cross-repo
+#      tokens with ZERO config.
+#   2. Every installed herdr plugin's own root: a plugin-relative token
+#      (assets/markdown-style.json from a plugin discussion) lives under
+#      ~/.config/herdr/plugins/..., which no workspace parent covers.
 # Still bounded: each added root costs one stat per first-level child, and
 # only on a full miss of every earlier rung.
 augment_roots() {
-  local levels="${QUICKLOOK_PARENT_SWEEP:-2}" base up=0 r found
+  local levels="${QUICKLOOK_PARENT_SWEEP:-2}" base up=0 r
   case "$levels" in '' | *[!0-9]*) levels=2 ;; esac
-  [ "$levels" -eq 0 ] && return 0
-  base="$(git rev-parse --show-toplevel 2>/dev/null)"
-  [ -z "$base" ] && base="$PWD"
-  while [ "$up" -lt "$levels" ]; do
-    base="${base%/*}"
-    up=$((up + 1))
-    [ -n "$base" ] && [ -d "$base" ] || break
-    found=0
-    local IFS=':'
-    for r in ${QUICKLOOK_ROOTS:-}; do
-      [ "$r" = "$base" ] && { found=1; break; }
+  if [ "$levels" -gt 0 ]; then
+    base="$(git rev-parse --show-toplevel 2>/dev/null)"
+    [ -z "$base" ] && base="$PWD"
+    while [ "$up" -lt "$levels" ]; do
+      base="${base%/*}"
+      up=$((up + 1))
+      [ -n "$base" ] && [ -d "$base" ] || break
+      _append_root "$base"
     done
-    unset IFS
-    [ "$found" -eq 1 ] && continue
-    QUICKLOOK_ROOTS="${QUICKLOOK_ROOTS:+$QUICKLOOK_ROOTS:}$base"
-  done
+  fi
+  while IFS= read -r r; do
+    _append_root "$r"
+  done < <("$herdr_bin" plugin list --json 2>/dev/null \
+    | jq -r '.result.plugins[].plugin_root // empty' 2>/dev/null)
   return 0
 }
 
