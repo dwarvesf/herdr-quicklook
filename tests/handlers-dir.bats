@@ -45,6 +45,7 @@ HERDR
 #!/usr/bin/env bash
 case "$*" in
   *".result.pane.pane_id"*) printf 'STUBPANE\n' ;;
+  *"root_pane.pane_id"*) printf 'VIEWTAB\n' ;;
   *".label"*) printf 'Files\n' ;;
   *) printf '{}' ;;
 esac
@@ -190,28 +191,62 @@ teardown() {
   grep -qF "pane send-keys STUBPANE Enter" "$HLOG"
 }
 
-@test "a directory outside the repo hands off to the preview, never a broken re-root" {
+@test "a directory outside the repo opens a viewer tab ROOTED there" {
+  # argv contract verified LIVE against herdr 0.7.5 + file-viewer 1.14.0:
+  # `tab create --cwd` + `pane run <abs binary>` is the only way to root a
+  # viewer outside the focused pane. `plugin pane open --cwd` breaks the
+  # spawn (relative manifest command) and must never come back.
   export HERDR_VIEWER_INSTALLED=1
+  mkdir -p "$FIX/vroot/target/release"
+  printf '#!/usr/bin/env bash\n' > "$FIX/vroot/target/release/herdr-file-viewer"
+  chmod +x "$FIX/vroot/target/release/herdr-file-viewer"
+  export QUICKLOOK_VIEWER_ROOT="$FIX/vroot"
   export QUICKLOOK_TOKEN="$FIX/outside/adir"
   run bash "$VIEWER"
   [ "$status" -eq 0 ]
-  grep -q "notification show quicklook --body outside this repo" "$HLOG"
-  # the viewer cannot be re-rooted: --cwd breaks its spawn (relative pane
-  # command), so it must never be attempted again. See open-in-viewer.sh.
-  ! grep -q -- "--cwd" "$HLOG"
+  grep -qF -- "tab create --cwd $FIX/outside/adir --focus" "$HLOG"
+  grep -qF "pane run VIEWTAB $FIX/vroot/target/release/herdr-file-viewer" "$HLOG"
+  grep -q "notification show quicklook --body viewer rooted at" "$HLOG"
   ! grep -q "plugin pane open" "$HLOG"
   ! grep -q "pane send-text" "$HLOG"
 }
 
-@test "a file in a SIBLING repo hands off to the preview, no viewer keystrokes" {
-  mkdir -p "$FIX/sibling/docs"
+@test "a file in a SIBLING repo roots the viewer there and opens it via the env target" {
+  mkdir -p "$FIX/sibling/docs" "$FIX/vroot/target/release"
   git -C "$FIX/sibling" init -q -b main
   printf 'x\n' > "$FIX/sibling/docs/note.md"
+  printf '#!/usr/bin/env bash\n' > "$FIX/vroot/target/release/herdr-file-viewer"
+  chmod +x "$FIX/vroot/target/release/herdr-file-viewer"
   export HERDR_VIEWER_INSTALLED=1
+  export QUICKLOOK_VIEWER_ROOT="$FIX/vroot"
   export QUICKLOOK_TOKEN="$FIX/sibling/docs/note.md"
   run bash "$VIEWER"
   [ "$status" -eq 0 ]
-  grep -q "notification show quicklook --body outside this repo" "$HLOG"
-  ! grep -q -- "--cwd" "$HLOG"
+  grep -qF -- "tab create --cwd $FIX/sibling" "$HLOG"
+  grep -qF -- "HERDR_FILE_VIEWER_OPEN=docs/note.md" "$HLOG"
   ! grep -q "pane send-text" "$HLOG"
+}
+
+@test "a sibling-repo file WITH a line number carries :N in the env open target" {
+  mkdir -p "$FIX/sibling/docs" "$FIX/vroot/target/release"
+  git -C "$FIX/sibling" init -q -b main
+  printf 'x\ny\nz\n' > "$FIX/sibling/docs/lined.md"
+  printf '#!/usr/bin/env bash\n' > "$FIX/vroot/target/release/herdr-file-viewer"
+  chmod +x "$FIX/vroot/target/release/herdr-file-viewer"
+  export HERDR_VIEWER_INSTALLED=1
+  export QUICKLOOK_VIEWER_ROOT="$FIX/vroot"
+  export QUICKLOOK_TOKEN="$FIX/sibling/docs/lined.md:7"
+  run bash "$VIEWER"
+  [ "$status" -eq 0 ]
+  grep -qF -- "HERDR_FILE_VIEWER_OPEN=docs/lined.md:7" "$HLOG"
+}
+
+@test "outside target with no built viewer binary degrades to the preview" {
+  export HERDR_VIEWER_INSTALLED=1
+  export QUICKLOOK_VIEWER_ROOT="$FIX/nonexistent-vroot"
+  export QUICKLOOK_TOKEN="$FIX/outside/adir"
+  run bash "$VIEWER"
+  [ "$status" -eq 0 ]
+  grep -q "notification show quicklook --body file viewer binary not built" "$HLOG"
+  ! grep -q "tab create" "$HLOG"
 }

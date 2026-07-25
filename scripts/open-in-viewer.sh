@@ -92,27 +92,56 @@ if resolve_any_token "$raw"; then
 fi
 [ -z "${target:-}" ] && { notify "not found: $raw"; exit 0; }
 
-# The viewer ALWAYS roots at the focused pane's repo and cannot be pointed
-# anywhere else. Verified live against herdr 0.7.5 + file-viewer 1.14.0:
-#   - `plugin pane open --cwd <dir>` does not re-root it, and actively
-#     BREAKS the spawn: the viewer's manifest pane command is the relative
-#     `./target/release/herdr-file-viewer`, which herdr resolves against
-#     that --cwd ("Unable to spawn <dir>/./target/release/... does not
-#     exist" in herdr-server.log).
-#   - an injected `--env HERDR_PLUGIN_CONTEXT_JSON` is overridden by herdr's
-#     own context, which reports the FOCUSED pane's cwd.
-#   - the calling process's own cwd is ignored for the same reason.
-# So a target outside this repo goes to the preview popup, which renders any
-# path from anywhere (a directory gets its tree listing there). Do not
-# reintroduce a --cwd re-root: it cannot work until the viewer's pane
-# command is absolute.
+# A target INSIDE the focused repo reuses the plugin's own idempotent tab
+# action below (open-or-switch, no duplicate viewer). A target OUTSIDE it
+# needs a viewer rooted somewhere else, and the plugin action cannot do
+# that: `plugin pane open` always roots at the FOCUSED pane, and the three
+# ways to redirect it all fail (verified live, herdr 0.7.5 / file-viewer
+# 1.14.0): `--cwd` breaks the spawn outright, because the viewer's manifest
+# pane command is the relative `./target/release/herdr-file-viewer` and
+# herdr resolves it against that cwd; an injected
+# `--env HERDR_PLUGIN_CONTEXT_JSON` is overridden by herdr's own context;
+# and the caller's cwd is ignored.
+#
+# What DOES work (also verified live): a PLAIN tab created at the target
+# (`tab create --cwd`), then the viewer's binary run in it BY ABSOLUTE PATH.
+# herdr injects no plugin context into a plain pane, so the viewer's own
+# `from_env()` falls back to the process cwd and roots exactly there. The
+# jump to a file+line rides `HERDR_FILE_VIEWER_OPEN` (the viewer's
+# documented launch open-target), so this path needs no keystroke injection
+# at all.
 root="$(git rev-parse --show-toplevel 2>/dev/null)"
+outside=0
 if [ -z "$root" ] || { [ "$target" != "$root" ] && [[ "$target" != "$root"/* ]]; }; then
-  notify "outside this repo: the viewer roots here, opening the preview instead"
-  exec bash "$script_dir/open-preview.sh" "$raw"
+  outside=1
+  tdir="$target"
+  [ -d "$tdir" ] || tdir="${target%/*}"
+  root="$(git -C "$tdir" rev-parse --show-toplevel 2>/dev/null)"
+  [ -z "$root" ] && root="$tdir"
 fi
 rel="${target#"$root"/}"
 [ "$rel" = "$target" ] && rel=""
+
+if [ "$outside" -eq 1 ]; then
+  vbin="$(viewer_bin)" || {
+    notify "file viewer binary not built; opening the preview instead"
+    exec bash "$script_dir/open-preview.sh" "$raw"
+  }
+  # A fresh tab per outside target is deliberate: the idempotent action
+  # would hand back a viewer rooted at the WRONG repo.
+  set -- tab create --cwd "$root" --focus
+  [ -n "$rel" ] && set -- "$@" --env "HERDR_FILE_VIEWER_OPEN=$rel${CLIP_LINE:+:$CLIP_LINE}"
+  vpane="$("$herdr_bin" "$@" 2>/dev/null | jq -r '.result.root_pane.pane_id // empty' 2>/dev/null)"
+  [ -n "$vpane" ] || {
+    notify "could not open a viewer tab; opening the preview instead"
+    exec bash "$script_dir/open-preview.sh" "$raw"
+  }
+  "$herdr_bin" pane run "$vpane" "$vbin" >/dev/null 2>&1 \
+    || { notify "file viewer did not start"; exit 1; }
+  notify "viewer rooted at $root (outside this repo)"
+  record_open "$raw"
+  exit 0
+fi
 
 # $rel is typed into the file-viewer TUI via send-text; a control byte in the
 # filename (e.g. an embedded newline in a maliciously-named file) would inject
