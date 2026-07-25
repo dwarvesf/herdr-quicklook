@@ -294,10 +294,7 @@ open_pick() {
   cleanup
   if [ -n "${QUICKLOOK_DEBUG_LOG:-}" ]; then
     resolve_any_token "${tokens[$i]}" 2>/dev/null
-    printf '%s pick: tok=%s mode=%s viewer_ok=%s target=%s\n' \
-      "$(date +%T)" "${tokens[$i]}" "${RESOLVED_MODE:-none}" \
-      "${QUICKLOOK_VIEWER_OK:-unset}" "${RESOLVED_TARGET:-none}" \
-      >> "$HOME/.config/herdr/quicklook-debug.log" 2>/dev/null || true
+    debug_log "pick: tok=${tokens[$i]} mode=${RESOLVED_MODE:-none} viewer_ok=${QUICKLOOK_VIEWER_OK:-unset} target=${RESOLVED_TARGET:-none}"
   fi
   if resolve_any_token "${tokens[$i]}" 2>/dev/null && [ "${RESOLVED_MODE:-}" = "viewer" ]; then
     export QUICKLOOK_KEEP_CWD=1

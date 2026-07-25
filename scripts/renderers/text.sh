@@ -26,7 +26,9 @@ render_text() {
   local target="$1" line="${2:-}"
   local lesskey_args=()
   [ -f "$LIB_DIR/../lesskey" ] && lesskey_args=(--lesskey-src="$LIB_DIR/../lesskey")
-  pager_prompt_args
+  # %f is less's own filename escape: the footer carries the name that the
+  # dropped bat header used to show, without occupying a line.
+  pager_prompt_args '%f · '
 
   export VISUAL="$LIB_DIR/escalate.sh"
   # Read by the lesskey `e` pshell binding (escalate-editor.sh); see lesskey.
@@ -36,10 +38,15 @@ render_text() {
     # flag so the user's own bat config decides (Han's pins TwoDark with a
     # "both panes read this" note). Pinning a theme here would override
     # that config and un-sync the panes, so QUICKLOOK_BAT_THEME adds a
-    # --theme flag ONLY when explicitly set. style=numbers,header: the
-    # viewer's numbers gutter, plus a filename header standing in for the
-    # viewer's own title UI.
-    LESSOPEN="|bat --color=always $(_bat_theme_flag)--style=numbers,header %s"
+    # --theme flag ONLY when explicitly set.
+    #
+    # style=numbers, NOT numbers,header: `less +N` counts lines in the
+    # LESSOPEN-FILTERED stream, so bat's one-line "File: ..." header shifts
+    # every `path:N` jump down by one (measured: a 5-line file renders as 6
+    # rows with header). The viewer itself runs plain `--style=numbers`, so
+    # dropping the header is also the real parity. The filename is carried
+    # in the pager footer instead (%f), where it costs no lines.
+    LESSOPEN="|bat --color=always $(_bat_theme_flag)--style=numbers %s"
     export LESSOPEN
     exec less -R "${lesskey_args[@]}" "${PAGER_PROMPT_ARGS[@]}" ${line:++$line} "$target"
   fi

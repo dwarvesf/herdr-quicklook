@@ -122,6 +122,14 @@ fi
 rel="${target#"$root"/}"
 [ "$rel" = "$target" ] && rel=""
 
+# $rel reaches the file-viewer either as send-text keystrokes (in-repo) or as
+# an env open-target (outside); a control byte in the filename would inject
+# keystrokes into that plugin. Refuse BEFORE either branch consumes it, so
+# the guard cannot be bypassed by a future edit to only one path.
+case "$rel" in
+  *[$'\n\r\t']*) notify "unsafe filename (control chars); refusing"; exit 0 ;;
+esac
+
 if [ "$outside" -eq 1 ]; then
   vbin="$(viewer_bin)" || {
     notify "file viewer binary not built; opening the preview instead"
@@ -142,13 +150,6 @@ if [ "$outside" -eq 1 ]; then
   record_open "$raw"
   exit 0
 fi
-
-# $rel is typed into the file-viewer TUI via send-text; a control byte in the
-# filename (e.g. an embedded newline in a maliciously-named file) would inject
-# extra keystrokes into that plugin. Refuse.
-case "$rel" in
-  *[$'\n\r\t']*) notify "unsafe filename (control chars); refusing"; exit 0 ;;
-esac
 
 # The viewer opens in its OWN TAB (open-file-viewer-tab switches to an
 # existing viewer tab instead of opening twice): a vertical split would

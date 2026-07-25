@@ -58,6 +58,9 @@ teardown() {
   run bash "$SCRIPT" "$FIX/repo/f.txt" </dev/null
   [ "$status" -eq 0 ]
   [[ "$output" == *"LESS_ARGS:"* ]]
+  # the nested diff view advertises its own toggle-back keys, not the
+  # preview's o/e/D set (different lesskey, different bindings).
+  [[ "$output" == *"back to preview"* ]]
   [[ "$output" == *"CHANGED LINE"* ]]
   # single post-`--` arg: git was called with exactly 6 args, the last one
   # (ARG6) being the untouched file path, ARG5 being the bare `--` separator.
@@ -74,6 +77,9 @@ teardown() {
   [ "$status" -eq 0 ]
   [[ "$output" == *"DELTA_RAN"* ]]
   [[ "$output" == *"LESS_ARGS:"* ]]
+  # the nested diff view advertises its own toggle-back keys, not the
+  # preview's o/e/D set (different lesskey, different bindings).
+  [[ "$output" == *"back to preview"* ]]
 }
 
 @test "dirty-diff: a clean file prints the no-changes notice, no pager" {
