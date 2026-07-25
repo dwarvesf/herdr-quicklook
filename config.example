@@ -23,10 +23,12 @@
 # plugin is installed (so preview and viewer look identical), else "auto".
 #QUICKLOOK_GLOW_STYLE=
 
-# QUICKLOOK_BAT_THEME: bat theme for code/text previews (and the find pane's
-# fzf preview). Default "ansi" renders with the terminal's own 16 colors so
-# code matches your pane theme; any `bat --list-themes` name works.
-#QUICKLOOK_BAT_THEME=ansi
+# QUICKLOOK_BAT_THEME: bat theme override for code/text previews (and the
+# find pane's fzf preview). UNSET (the default), no --theme flag is passed
+# and your own bat config decides, exactly like herdr-file-viewer, so the
+# two panes stay color-identical. Set only to intentionally diverge; any
+# `bat --list-themes` name works.
+#QUICKLOOK_BAT_THEME=
 
 # QUICKLOOK_EDITOR: command launched by `e` in the preview overlay, at the
 # current file+line. Precedence: this key > $EDITOR > "zed --wait". Set this

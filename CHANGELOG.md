@@ -2,6 +2,13 @@
 
 ## Unreleased
 
+- Viewer display parity for code: the bat theme pin is gone, so the user's
+  own bat config decides the theme in BOTH panes (exactly how
+  herdr-file-viewer invokes bat); QUICKLOOK_BAT_THEME now only adds a
+  --theme flag when explicitly set. Renderer subprocesses get
+  CLICOLOR_FORCE=1 (the viewer's trick) so piped tools keep full color.
+  Code style is numbers,header (the viewer's gutter + a filename header).
+
 - The hint scanner trims UNMATCHED wrapping punctuation: prose like
   `(assets/markdown-style.json copied ...)` splits the opener onto the span
   with its closer words away, so the token kept a leading `(` and never
