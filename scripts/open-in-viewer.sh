@@ -20,7 +20,10 @@ load_config
 
 # Soft dependency: without herdr-file-viewer this action degrades to the
 # preview overlay instead of failing, so the binding still does something useful.
-if ! "$herdr_bin" plugin action list --plugin herdr-file-viewer >/dev/null 2>&1; then
+# Same gate as dir.sh's (sourced via lib.sh), so the QUICKLOOK_VIEWER_OK
+# hint passed into a pane short-circuits it here too - this script is
+# exec'd FROM the overlay, which may not reach `herdr` on its own.
+if ! _dir_viewer_available; then
   notify "herdr-file-viewer not installed; opening the preview overlay"
   exec bash "$script_dir/open-preview.sh"
 fi

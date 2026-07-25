@@ -2,6 +2,15 @@
 
 ## Unreleased
 
+- A DIRECTORY picked from the hint overlay opens the real file viewer again
+  instead of a tree listing in the popup. The herdr server often runs with a
+  minimal PATH, so a bare `herdr` is unreachable from the panes and actions
+  it spawns; the dir handler's viewer gate then failed silently and downgraded
+  the pick. lib.sh now resolves herdr_bin to an absolute install path when
+  PATH cannot see it (and exports it to exec'd children), and the hint action
+  answers the gate in its own context, passing QUICKLOOK_VIEWER_OK into the
+  overlay so the routing decision needs no pane-side RPC at all.
+
 - Review-batch fixes (advisor + security/architecture/test lenses over the
   session): escalate-editor/find-pane/recents-pane load env-only config (no
   wasted git+herdr forks); augment_roots' one plugin-list fork also captures

@@ -115,11 +115,19 @@ fi
   rm -f "$raw_file" 2>/dev/null
 ) &
 
+# Answer the viewer gate HERE, in the action's own context, and hand the
+# result to the overlay: the pane may not be able to reach `herdr` at all
+# (minimal server PATH), and a failed gate silently downgrades a directory
+# pick from the real file viewer to a tree listing in the popup.
+viewer_ok=0
+"$herdr_bin" plugin action list --plugin herdr-file-viewer >/dev/null 2>&1 && viewer_ok=1
+
 set -- plugin pane open \
   --plugin herdr-quicklook \
   --entrypoint hint-pane \
   --placement overlay \
   --focus \
+  --env "QUICKLOOK_VIEWER_OK=$viewer_ok" \
   --env "QUICKLOOK_HINT_TOKENS_FILE=$tokens_file" \
   --env "QUICKLOOK_HINT_SNAP_FILE=$snap_file"
 
