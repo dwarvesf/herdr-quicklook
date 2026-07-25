@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+- The bare-filename fallback (rung 7) widens to the workspace: when the
+  current repo's tracked files have no hit, every first-level child repo of
+  QUICKLOOK_ROOTS is searched (bounded, deduped, current repo skipped), so a
+  cockpit row's bare filename opens from any pane.
+
 - Installed herdr plugin roots join the implicit workspace roots, so a
   plugin-relative token (e.g. `assets/markdown-style.json`) resolves into
   the plugin's checkout under `~/.config/herdr/plugins/`.
