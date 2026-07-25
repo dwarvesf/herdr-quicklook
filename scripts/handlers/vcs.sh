@@ -20,6 +20,29 @@ _VCS_HASHREF_RE='^#[0-9]+$'
 # .../pull/<digits> tail).
 _VCS_PR_URL_RE='^https://github\.com/[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+/pull/[0-9]+/?$'
 
+# _vcs_repo_with_commit <sha> -> a repo path that HAS this commit, on
+# stdout, else empty. Probes every first-level child of each
+# QUICKLOOK_ROOTS entry (the same set resolve() sweeps), one cheap
+# `cat-file -e` per repo, first hit wins.
+_vcs_repo_with_commit() {
+  local sha="$1" r d
+  local IFS=':'
+  for r in ${QUICKLOOK_ROOTS:-}; do
+    [ -n "$r" ] && [ -d "$r" ] || continue
+    unset IFS
+    for d in "$r"/*/; do
+      d="${d%/}"
+      [ -e "$d/.git" ] || continue
+      if git -C "$d" cat-file -e "${sha}^{commit}" 2>/dev/null; then
+        printf '%s' "$d"
+        return 0
+      fi
+    done
+    local IFS=':'
+  done
+  return 1
+}
+
 match_vcs() {
   [ -n "$1" ] || return 1
   [[ "$1" =~ $_VCS_SHA_RE ]] && return 0
@@ -44,7 +67,7 @@ handle_vcs() {
       RESOLVED_TARGET=""
       RESOLVED_LINE=""
       RESOLVED_MODE="command"
-      RESOLVED_CMD=(gh pr view "$n")
+      RESOLVED_CMD=(bash "$LIB_DIR/pr-view.sh" "$n")
       return 0
       ;;
     https://github.com/*)
@@ -53,7 +76,7 @@ handle_vcs() {
       RESOLVED_TARGET=""
       RESOLVED_LINE=""
       RESOLVED_MODE="command"
-      RESOLVED_CMD=(gh pr view "$raw")
+      RESOLVED_CMD=(bash "$LIB_DIR/pr-view.sh" "$raw")
       return 0
       ;;
     *)
@@ -70,7 +93,23 @@ handle_vcs() {
       RESOLVED_TARGET=""
       RESOLVED_LINE=""
       RESOLVED_MODE="command"
-      RESOLVED_CMD=(git show --end-of-options "$raw")
+      # The SHA on screen often belongs to ANOTHER repo (a commit list
+      # from a sibling checkout), and `git show` in the pane's own repo
+      # answers "fatal: ambiguous argument" instead of rendering it. Find
+      # the repo that actually has the object first; bounded, and only
+      # when the current repo does not have it.
+      # `var=$(cmd)` carries cmd's exit status, so this must not be the
+      # last command in an && / || chain, or handle_vcs returns non-zero.
+      local repo=""
+      if ! { git rev-parse --git-dir >/dev/null 2>&1 \
+        && git cat-file -e "${raw}^{commit}" 2>/dev/null; }; then
+        repo="$(_vcs_repo_with_commit "$raw" || true)"
+      fi
+      if [ -n "$repo" ]; then
+        RESOLVED_CMD=(git -C "$repo" show --end-of-options "$raw")
+      else
+        RESOLVED_CMD=(git show --end-of-options "$raw")
+      fi
       return 0
       ;;
   esac
