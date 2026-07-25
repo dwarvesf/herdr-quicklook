@@ -595,7 +595,11 @@ unset _herdr_renderer
 render_command_in_pager() {
   local lesskey_args=()
   [ -f "$LIB_DIR/../lesskey" ] && lesskey_args=(--lesskey-src="$LIB_DIR/../lesskey")
-  "$@" 2>&1 | less -R "${lesskey_args[@]}"
+  # CLICOLOR_FORCE=1: same trick herdr-file-viewer applies to every renderer
+  # subprocess - termenv-based tools (glow/glamour) drop to a no-color
+  # profile when stdout is a pipe even with an explicit style; harmless to
+  # bat/delta/jq, which force color via their own flags.
+  CLICOLOR_FORCE=1 "$@" 2>&1 | less -R "${lesskey_args[@]}"
 }
 
 # resolve_any_token <raw> -> see the handler-registry contract at the top of

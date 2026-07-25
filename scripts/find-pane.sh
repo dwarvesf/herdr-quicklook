@@ -43,8 +43,11 @@ list_files() {
   fi
 }
 
-# Same theme rule as text.sh: terminal-native ansi theme unless overridden.
-preview_cmd="bat --color=always --theme=${QUICKLOOK_BAT_THEME:-ansi} --style=numbers {} 2>/dev/null || cat {} 2>/dev/null"
+# Same theme rule as text.sh: the user's bat config decides (viewer parity);
+# QUICKLOOK_BAT_THEME adds a --theme flag only when explicitly set.
+bat_theme_flag=""
+[ -n "${QUICKLOOK_BAT_THEME:-}" ] && bat_theme_flag="--theme=${QUICKLOOK_BAT_THEME} "
+preview_cmd="bat --color=always ${bat_theme_flag}--style=numbers {} 2>/dev/null || cat {} 2>/dev/null"
 command -v bat >/dev/null 2>&1 || preview_cmd='cat {} 2>/dev/null'
 
 # QUICKLOOK_FIND_QUERY pre-seeds the fzf query: the hint flow drops an

@@ -31,11 +31,16 @@ render_text() {
   # Read by the lesskey `e` pshell binding (escalate-editor.sh); see lesskey.
   export QUICKLOOK_EDITOR_SCRIPT="$LIB_DIR/escalate-editor.sh"
   if command -v bat >/dev/null 2>&1; then
-    # ansi theme = the terminal's own 16 colors, so code matches the pane
-    # theme (and the viewer) instead of bat's 256-color default; grid +
-    # header frame the file like the viewer does. QUICKLOOK_BAT_THEME
-    # overrides (any `bat --list-themes` name).
-    export LESSOPEN="|bat --color=always --theme=${QUICKLOOK_BAT_THEME:-ansi} --style=numbers,header,grid %s"
+    # Display parity with herdr-file-viewer, which runs bat with NO theme
+    # flag so the user's own bat config decides (Han's pins TwoDark with a
+    # "both panes read this" note). Pinning a theme here would override
+    # that config and un-sync the panes, so QUICKLOOK_BAT_THEME adds a
+    # --theme flag ONLY when explicitly set. style=numbers,header: the
+    # viewer's numbers gutter, plus a filename header standing in for the
+    # viewer's own title UI.
+    local theme_flag=""
+    [ -n "${QUICKLOOK_BAT_THEME:-}" ] && theme_flag="--theme=${QUICKLOOK_BAT_THEME} "
+    export LESSOPEN="|bat --color=always ${theme_flag}--style=numbers,header %s"
     exec less -R "${lesskey_args[@]}" ${line:++$line} "$target"
   fi
   exec less -N "${lesskey_args[@]}" ${line:++$line} "$target"
