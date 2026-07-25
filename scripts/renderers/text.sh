@@ -38,26 +38,14 @@ render_text() {
     # that config and un-sync the panes, so QUICKLOOK_BAT_THEME adds a
     # --theme flag ONLY when explicitly set.
     #
-    # style=numbers,header puts the FILENAME on top, where it belongs; the
-    # footer stays keys-only.
-    #
-    # The header occupies rows in the LESSOPEN-filtered stream that `less
-    # +N` counts, so a `path:N` jump must skip them. Its height is NOT a
-    # constant: bat wraps the "File: ..." line, so a long path in a narrow
-    # pane takes two rows where a short one takes one (measured both).
-    # Measure it instead of guessing, with a one-line probe render, and
-    # only when a jump was actually requested.
-    LESSOPEN="|bat --color=always $(_bat_theme_flag)--style=numbers,header %s"
+    # style=numbers, no header: the object's name lives in the PANE LABEL
+    # (open-popup.sh renames the pane "Preview: <name>"), which costs no
+    # content row and cannot wrap. A header row would also shift every
+    # `path:N` jump, since `less +N` counts rows in this filtered stream
+    # and bat wraps a long "File: ..." path onto a second row.
+    LESSOPEN="|bat --color=always $(_bat_theme_flag)--style=numbers %s"
     export LESSOPEN
-    local jump="$line" probe
-    if [ -n "$jump" ]; then
-      probe="$(bat --color=always --style=numbers,header --line-range 1:1 -- "$target" 2>/dev/null | wc -l | tr -d ' ')"
-      case "$probe" in
-        '' | *[!0-9]*) : ;;
-        *) [ "$probe" -gt 1 ] && jump=$((jump + probe - 1)) ;;
-      esac
-    fi
-    exec less -R "${lesskey_args[@]}" "${PAGER_PROMPT_ARGS[@]}" ${jump:++$jump} "$target"
+    exec less -R "${lesskey_args[@]}" "${PAGER_PROMPT_ARGS[@]}" ${line:++$line} "$target"
   fi
   exec less -N "${lesskey_args[@]}" "${PAGER_PROMPT_ARGS[@]}" ${line:++$line} "$target"
 }

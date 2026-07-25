@@ -612,3 +612,16 @@ SCRIPT
   run pick_scan_text <<<'Update(sub/inrepo.md'
   [[ "$output" != *"$(printf 'Update\t')"* ]]
 }
+
+# ---- glob patterns name no single file ----
+
+@test "pick_scan_text: a glob resolves to the directory that contains it" {
+  run pick_scan_text <<<'shellcheck -x sub/*.md now'
+  [[ "$output" == *"$(printf 'sub\tpath')"* || "$output" == *"$(printf 'sub\tdir')"* ]]
+  [[ "$output" != *"*"* ]]
+}
+
+@test "pick_scan_text: a bare glob with no directory part is dropped" {
+  run pick_scan_text <<<'run *.md now'
+  [[ "$output" != *"*.md"* ]]
+}
