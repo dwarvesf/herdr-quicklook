@@ -220,8 +220,18 @@ recents_state_file() {
 # requires: state must NEVER land inside a repo, however
 # XDG_STATE_HOME/$HOME ends up set on a given machine.
 recents_path_is_safe() {
-  local d
-  d="$(dirname -- "$1")"
+  local p="$1" d
+  # A RELATIVE state path has to be anchored to the cwd before the walk, or
+  # the loop terminates at "." having never looked at what "." actually is,
+  # and the guard passes a path that sits inside the repo. That is not
+  # hypothetical: a $HOME polluted with terminal escape bytes produced the
+  # relative "<ESC>[H/.local/state/herdr-quicklook/recents", and this guard
+  # waved it straight into the working tree.
+  case "$p" in
+    /*) ;;
+    *) p="$PWD/$p" ;;
+  esac
+  d="$(dirname -- "$p")"
   while [ -n "$d" ] && [ "$d" != "/" ] && [ "$d" != "." ]; do
     [ -e "$d/.git" ] && return 1
     d="$(dirname -- "$d")"
