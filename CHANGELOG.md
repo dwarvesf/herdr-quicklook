@@ -2,6 +2,15 @@
 
 ## Unreleased
 
+- The hint picker is visible when summoned from inside a preview. Two
+  overlays in one tab do not stack (herdr keeps the first on top), so the
+  hint overlay opened over a preview overlay was focused yet invisible: the
+  key fired, the pane opened, the buffer painted, and the screen still
+  showed the preview - with the next keypresses going into a pane the user
+  could not see. Over a preview the hint pane now opens as a popup, herdr's
+  top surface. Keyboard picks and plain-click picks are unchanged;
+  herdr-level Ctrl+click resolution is unavailable inside the popup.
+
 - The hint overlay announces itself with a bottom banner ("hint · N
   target(s) · press a highlighted key · Ctrl+click · q cancels"). The overlay
   repaints the same screen with hint letters over token first-characters, so

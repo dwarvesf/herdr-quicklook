@@ -157,10 +157,25 @@ viewer_ok=0
 # knowing which branch a pick took.
 debug_log "hint: viewer_ok=$viewer_ok herdr_bin=$herdr_bin"
 
+# Placement: overlay normally, POPUP when the origin is itself a preview
+# overlay. Two overlays in one tab do NOT stack: herdr keeps the first on
+# top, so a hint overlay opened over a preview overlay is focused but
+# INVISIBLE - the user's presses fired (plugin log, exit 0, pane opened,
+# focused:true), the buffer painted correctly, and the screen showed only
+# the preview; their next keys then went into a pane they could not see. A
+# popup is herdr's transient top surface and renders above overlays.
+#
+# Cost, per the overlay-vs-popup note in DESIGN.md: popup mouse input is
+# forwarded raw to the process, so herdr-level OSC-8 Ctrl+click resolution
+# is lost inside it. hint-pane's own SGR click tracking still works, and
+# the keyboard path is untouched, which is the primary pick path anyway.
+hint_placement=overlay
+[ -n "$origin_preview" ] && hint_placement=popup
+
 set -- plugin pane open \
   --plugin herdr-quicklook \
   --entrypoint hint-pane \
-  --placement overlay \
+  --placement "$hint_placement" \
   --focus \
   --env "QUICKLOOK_VIEWER_OK=$viewer_ok" \
   --env "QUICKLOOK_DEBUG_LOG=${QUICKLOOK_DEBUG_LOG:-}" \
@@ -173,5 +188,10 @@ set -- plugin pane open \
 if [ -n "$repo" ] && [ -d "$repo" ]; then
   set -- "$@" --env "QUICKLOOK_HINT_CWD=$repo"
 fi
+
+# Near-full size so the popup's tty geometry stays close to the origin's:
+# the snapshot was captured at the origin's width, and a much narrower
+# popup would soft-wrap long rows and shift the mouse-click row mapping.
+[ "$hint_placement" = popup ] && set -- "$@" --width 100% --height 100%
 
 exec "$herdr_bin" "$@"

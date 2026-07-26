@@ -284,10 +284,19 @@ The narrower `git-host-token` handler routes only URL shapes quicklook improves
 (blob/raw files and pull requests) to the existing `preview` action. Handler
 order is significant: the internal sentinel handler stays first.
 
-`hint-pane` must remain an `overlay`, not a popup. Herdr overlays are normal
-terminal panes whose OSC-8 cells participate in Ctrl-click resolution; popup
-mouse input is forwarded directly to the popup process before link handling.
-The shared scanner remains compatible with macOS system Bash 3.2.
+`hint-pane` opens as an `overlay` normally, and as a `popup` when the origin
+is itself a preview overlay. The overlay default is what keeps OSC-8
+Ctrl-click resolution: herdr overlays are normal terminal panes whose OSC-8
+cells participate in link handling, while popup mouse input is forwarded
+directly to the popup process before it. But two overlays in one tab do NOT
+stack - herdr keeps the first on top - so a hint overlay opened over a
+preview overlay is focused yet invisible: the press fires, the pane opens,
+the buffer paints, and the screen still shows the preview, with the user's
+next keys going into a pane they cannot see (observed live via the plugin
+log). A popup is herdr's transient top surface and renders above overlays;
+inside it, hint-pane's own SGR click tracking and the keyboard path still
+work, only herdr-level Ctrl+click resolution is lost. The shared scanner
+remains compatible with macOS system Bash 3.2.
 
 ## The lesskey three-slot map
 
