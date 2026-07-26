@@ -81,3 +81,11 @@
 # The log is append-only with no rotation, so turn it back off once the
 # question is answered.
 #QUICKLOOK_DEBUG_LOG=1
+
+# QUICKLOOK_LINE_NUMBERS: show line numbers in file-backed previews (less -N).
+# The render width reserves the number field, so numbers do not push every
+# line into a wrap. NOTE on markdown: less numbers the RENDERED rows glow
+# produced, not the source lines (glow reflows, so one source line becomes
+# several rows). Code/text previews use bat, whose numbers are true source
+# lines. Off by default.
+#QUICKLOOK_LINE_NUMBERS=1

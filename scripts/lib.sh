@@ -421,11 +421,30 @@ _pane_cols() {
 # minus the pad_left gutter , without that subtraction every full-width row
 # overflows by the gutter and less soft-wraps its tail onto the next line.
 # Floors at 80 when the size is unreadable, so a formatter never gets 0.
+# less -N prints its line number in a fixed-width field before the text. The
+# render width has to reserve it: without that the content is already sized to
+# fill the pane exactly, so turning numbers on overflows every single line by
+# the width of the number field and less soft-wraps each one onto a
+# continuation row (which also makes the numbers look duplicated).
+LINE_NUMBER_COLS=8
+
+# line_numbers_on: opt-in via QUICKLOOK_LINE_NUMBERS=1. Off by default for a
+# reason worth knowing: on a FILE-BACKED markdown preview less numbers the
+# lines it is given, which are glow's RENDERED rows, not the source lines -
+# glow reflows, so one source line becomes several rows. The numbers are
+# honest row positions, useful for "look at what is on my screen", but they
+# are NOT source line numbers and cannot be used to jump to one. Code/text
+# previews go through bat, whose --style=numbers ARE true source lines.
+line_numbers_on() {
+  [ "${QUICKLOOK_LINE_NUMBERS:-0}" = 1 ]
+}
+
 pane_cols() {
-  local sz
+  local sz reserve="$PAD_LEFT_COLS"
+  line_numbers_on && reserve=$((reserve + LINE_NUMBER_COLS))
   sz="$(_pane_cols)"
-  [ "$sz" -gt $((PAD_LEFT_COLS + 20)) ] || sz=$((80 + PAD_LEFT_COLS))
-  printf '%s' "$((sz - PAD_LEFT_COLS))"
+  [ "$sz" -gt $((reserve + 20)) ] || sz=$((80 + reserve))
+  printf '%s' "$((sz - reserve))"
 }
 
 # linkify: stdin -> stdout, wrapping every path/URL-shaped span in the
@@ -1052,8 +1071,12 @@ render_file_backed() {
   LESSOPEN="|$LIB_DIR/render-open.sh %s"
   # shellcheck disable=SC2090
   export LESSOPEN
+  local number_args=()
+  # pane_cols has already reserved LINE_NUMBER_COLS, so the numbered content
+  # still fits the pane instead of wrapping every line.
+  line_numbers_on && number_args=(-N)
   # shellcheck disable=SC2086
-  exec less -R "${lesskey_args[@]}" "${PAGER_PROMPT_ARGS[@]}" ${line:++$line} "$target"
+  exec less -R "${lesskey_args[@]}" "${number_args[@]}" "${PAGER_PROMPT_ARGS[@]}" ${line:++$line} "$target"
 }
 
 # render_hint_for_ext <ext> -> prints the recommended external tool for a

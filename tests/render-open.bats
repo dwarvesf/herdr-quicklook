@@ -61,3 +61,21 @@ SH
   [ "$status" -eq 0 ]
   [ -z "$output" ]
 }
+
+# less -N prints its number in a fixed-width field. The content is otherwise
+# sized to fill the pane exactly, so without reserving that field every line
+# overflows and soft-wraps onto a continuation row (which also makes the
+# numbers look duplicated on screen).
+@test "pane_cols reserves the line-number field when numbers are on" {
+  local off on
+  off="$(bash -c ". '$LIB'; _pane_cols() { printf '120'; }; pane_cols")"
+  on="$(bash -c ". '$LIB'; _pane_cols() { printf '120'; }; QUICKLOOK_LINE_NUMBERS=1 pane_cols")"
+  [ "$off" -eq 118 ]
+  [ "$on" -eq $((118 - 8)) ]
+}
+
+@test "pane_cols: the 80-column floor also accounts for the number field" {
+  local on
+  on="$(bash -c ". '$LIB'; _pane_cols() { printf '0'; }; QUICKLOOK_LINE_NUMBERS=1 pane_cols")"
+  [ "$on" -eq 80 ]
+}
