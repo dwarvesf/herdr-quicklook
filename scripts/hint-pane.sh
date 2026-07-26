@@ -300,7 +300,7 @@ open_pick() {
     export QUICKLOOK_KEEP_CWD=1
     exec bash "$script_dir/open-in-viewer.sh" "${tokens[$i]}"
   fi
-  QUICKLOOK_PREVIEW_CWD="$PWD" QUICKLOOK_OPEN_PLACEMENT="${QUICKLOOK_OPEN_PLACEMENT:-popup}" \
+  QUICKLOOK_PREVIEW_CWD="$PWD" QUICKLOOK_OPEN_PLACEMENT="${QUICKLOOK_OPEN_PLACEMENT:-overlay}" \
     exec bash "$script_dir/open-popup.sh" "${tokens[$i]}"
 }
 

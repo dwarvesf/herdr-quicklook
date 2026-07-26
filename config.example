@@ -89,3 +89,12 @@
 # several rows). Code/text previews use bat, whose numbers are true source
 # lines. Off by default.
 #QUICKLOOK_LINE_NUMBERS=1
+
+# QUICKLOOK_OPEN_PLACEMENT: the surface a hint pick opens in.
+# "overlay" (default) or "tab" both give the pane an id and a label, which is
+# what lets you keep drilling: `hint` can target the pane for a SECOND
+# overlay, and a further pick stacks onto it. "popup" is roomier but
+# ANONYMOUS, herdr returns no pane id for it and it never appears in
+# `pane list`, so a pick lands somewhere nothing can address and the
+# drill-down stops there.
+#QUICKLOOK_OPEN_PLACEMENT=overlay

@@ -2,6 +2,14 @@
 
 ## Unreleased
 
+- A hint pick lands somewhere you can keep working. Picks used to open a 90%
+  popup, and a popup is ANONYMOUS: herdr returns no pane id for it and it
+  never appears in `pane list`. Everything that makes a preview drillable
+  needs that identity, so from inside a picked preview there was no second
+  hint overlay and a further pick could not stack, it just spawned another
+  surface. Picks now open an overlay (`QUICKLOOK_OPEN_PLACEMENT=popup`
+  restores the old behaviour, at the cost of the drill-down loop).
+
 - The hint picker works inside a preview, and a pick now STACKS. Press the
   hint key over a preview and every openable token in it gets a one-key
   label, exactly as it does over a terminal pane; choosing one pushes it

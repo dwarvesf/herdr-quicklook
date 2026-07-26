@@ -162,6 +162,13 @@ terminal pane. Picking one pushes it, same as a click. So a drill-down is
 depth. (`q` cannot double as "pop": `less` keeps running when its last file is
 removed, so a single key would strand you at the bottom of the stack.)
 
+A pick opens an **overlay** by default rather than a popup, because a popup is
+anonymous, herdr returns no pane id for one and it never appears in
+`pane list`. Both the second hint overlay and the stack push need to address
+the pane by id, so a popup ends the drill-down. Set
+`QUICKLOOK_OPEN_PLACEMENT=popup` if you would rather have the roomier surface
+and do not need to keep drilling; `tab` gives a persistent pane and keeps both.
+
 ## Recents (`prefix+shift+v`)
 
 Every successful open (a file, a URL, a `command`/`viewer`-mode result) is recorded to a small, bounded log (last 20, deduped: reopening something already in the log just moves it back to the front). Press the binding and it reopens the most recent entry directly; with [`fzf`](https://github.com/junegunn/fzf) installed and more than one entry, it opens an fzf pick over the last N instead.

@@ -28,9 +28,22 @@ if [ "${QUICKLOOK_ORIGIN_PREVIEW:-}" = 1 ]; then
     "${QUICKLOOK_ORIGIN_CWD:-}" && exit 0
 fi
 
-# QUICKLOOK_OPEN_PLACEMENT=tab opens a FULL persistent tab pane instead of
-# the transient popup (the hint overlay's UPPERCASE pick).
-placement="${QUICKLOOK_OPEN_PLACEMENT:-popup}"
+# QUICKLOOK_OPEN_PLACEMENT=tab opens a FULL persistent tab pane (the hint
+# overlay's UPPERCASE pick); =popup restores the old transient 90% popup.
+#
+# The default is `overlay`, not `popup`, because a POPUP IS ANONYMOUS:
+# `plugin pane open --placement popup` returns {"result":{"type":"ok"}} with
+# no pane_id, and the pane never appears in `pane list` at all. Measured
+# against herdr 0.7.5; tab and overlay both return an id and are listed.
+#
+# Everything that makes a preview drillable needs that identity:
+#   - `hint` finds its origin pane by id, so from inside a popup there is no
+#     second hint overlay - the pick is a dead end,
+#   - pane_is_preview matches on the pane's label, so a pick taken in a popup
+#     could not push onto its stack and spawned yet another surface.
+# A popup buys some extra room and costs the whole drill-down loop, which is
+# the wrong trade for the common path.
+placement="${QUICKLOOK_OPEN_PLACEMENT:-overlay}"
 set -- plugin pane open \
   --plugin herdr-quicklook \
   --entrypoint preview \
