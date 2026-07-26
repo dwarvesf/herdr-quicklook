@@ -50,3 +50,21 @@ teardown() {
   [ "$status" -eq 0 ]
   [[ "$output" == *$'\033[H\033[2;90m'* ]]
 }
+
+# The banner is the overlay's proof of life. On a sparse pane (a PR view has
+# 2-3 openable tokens) the overlay differs from the pane under it by 2-3
+# characters, and a real user pressed the key twice, saw "nothing", and
+# dismissed two perfectly good overlays unseen (plugin log, 00:20:22 and
+# 00:20:44). The banner makes a successful open unmistakable.
+@test "hint-pane: paints the banner row with the target count" {
+  run bash "$PANE" <<<'q'
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"1 target(s)"* ]]
+  [[ "$output" == *"q cancels"* ]]
+}
+
+@test "hint-pane: QUICKLOOK_HINT_BANNER=0 suppresses the banner" {
+  QUICKLOOK_HINT_BANNER=0 run bash "$PANE" <<<'q'
+  [ "$status" -eq 0 ]
+  [[ "$output" != *"target(s)"* ]]
+}

@@ -260,6 +260,18 @@ if [ "${#extras[@]}" -gt 0 ]; then
   done
 fi
 
+# One unmistakable banner row at the very bottom. The overlay repaints the
+# SAME screen with hint letters over token first-characters, and a sparse
+# pane (a PR view has 2-3 openable tokens) changes only 2-3 characters, so a
+# successful open was reported as "I pressed the key and nothing happened":
+# the plugin log showed two overlays opened and dismissed unseen. The banner
+# is the overlay's own proof of life, and it doubles as the key legend.
+# Appended AFTER the span rows are recorded, so no mouse target shifts.
+if [ "${QUICKLOOK_HINT_BANNER:-1}" != 0 ]; then
+  body+="${NL} ${H_KEY} hint ${RESET} ${#tokens[@]} target(s) · press a highlighted key · Ctrl+click · q cancels${CLR}"
+  screen_rows=$((screen_rows + 1))
+fi
+
 # Re-derive the top pad with the extras rows counted in, floor 0, and shift
 # every stored mouse-target row by it: span rows were computed relative to
 # the content's first row, but SGR click coordinates are pane-absolute.

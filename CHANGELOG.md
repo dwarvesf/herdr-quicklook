@@ -2,6 +2,14 @@
 
 ## Unreleased
 
+- The hint overlay announces itself with a bottom banner ("hint · N
+  target(s) · press a highlighted key · Ctrl+click · q cancels"). The overlay
+  repaints the same screen with hint letters over token first-characters, so
+  on a sparse pane (a PR view has 2-3 openable tokens) a successful open
+  changed 2-3 characters and read as "nothing happened"; the plugin log
+  showed two perfectly good overlays opened and dismissed unseen.
+  `QUICKLOOK_HINT_BANNER=0` hides it.
+
 - A hint pick lands somewhere you can keep working. Picks used to open a 90%
   popup, and a popup is ANONYMOUS: herdr returns no pane id for it and it
   never appears in `pane list`. Everything that makes a preview drillable

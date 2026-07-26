@@ -98,3 +98,9 @@
 # `pane list`, so a pick lands somewhere nothing can address and the
 # drill-down stops there.
 #QUICKLOOK_OPEN_PLACEMENT=overlay
+
+# QUICKLOOK_HINT_BANNER: the "hint · N target(s) · ..." row painted along the
+# bottom of the hint overlay. On a sparse pane the overlay differs from the
+# pane under it by only 2-3 highlighted characters, so without the banner a
+# successful open can be invisible. Set 0 to hide it.
+#QUICKLOOK_HINT_BANNER=1
