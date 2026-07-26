@@ -31,6 +31,12 @@
 # to leave tables exactly as glow renders them.
 #QUICKLOOK_TABLE_RULES=1
 
+# QUICKLOOK_LINKIFY: wrap every path/URL-shaped span in the preview in an
+# OSC-8 link, so Ctrl+click opens it (same transport the hint overlay uses).
+# Matches on shape only and never touches the filesystem; resolution happens
+# at click time. Set 0 to render without links.
+#QUICKLOOK_LINKIFY=1
+
 # QUICKLOOK_BAT_THEME: bat theme override for code/text previews (and the
 # find pane's fzf preview). UNSET (the default), no --theme flag is passed
 # and your own bat config decides, exactly like herdr-file-viewer, so the
