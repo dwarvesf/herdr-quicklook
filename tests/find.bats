@@ -109,13 +109,26 @@ SH
   grep -qx 'QUICKLOOK_FIND_QUERY=src/targ.md' <<<"$output"
 }
 
-@test "open-popup forwards the token into a 90% popup preview" {
+# The default is `overlay`, not `popup`. A popup is ANONYMOUS: herdr returns
+# no pane_id for it and it never appears in `pane list`, so `hint` cannot
+# target it for a second overlay and pane_is_preview cannot match it for a
+# stack push. A pick landing there ends the drill-down.
+@test "open-popup forwards the token into an addressable overlay by default" {
   export HERDR_BIN_PATH="$STUB/herdr"
   run bash "$ROOT/scripts/open-popup.sh" 'src/target.md'
   [ "$status" -eq 0 ]
+  grep -qx 'overlay' <<<"$output"
+  ! grep -qx 'popup' <<<"$output"
+  ! grep -qx -- '--width' <<<"$output"
+  grep -qx 'QUICKLOOK_TOKEN=src/target.md' <<<"$output"
+}
+
+@test "open-popup honors QUICKLOOK_OPEN_PLACEMENT=popup (opt back into 90% sizing)" {
+  export HERDR_BIN_PATH="$STUB/herdr"
+  QUICKLOOK_OPEN_PLACEMENT=popup run bash "$ROOT/scripts/open-popup.sh" 'src/target.md'
+  [ "$status" -eq 0 ]
   grep -qx 'popup' <<<"$output"
   grep -qx '90%' <<<"$output"
-  grep -qx 'QUICKLOOK_TOKEN=src/target.md' <<<"$output"
 }
 
 @test "open-popup honors QUICKLOOK_OPEN_PLACEMENT=tab (full pane, no size flags)" {
