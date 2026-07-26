@@ -71,6 +71,19 @@ if [ -n "$origin_pane" ]; then
 fi
 _pick_strip_ansi <"$raw_file" >"$snap_file"
 
+# Over a PREVIEW, the bottom row is less's prompt (our key-hint footer), not
+# document content, and the scanner cannot tell. It was handing out letters
+# for the footer's own text - the object name, and the `/` in "/ search",
+# which opens the FILESYSTEM ROOT in the file viewer. Strip it from the SCAN
+# only: the snapshot above keeps the footer so the overlay still looks like
+# the pane, and dropping just the last row leaves every preceding line number
+# unchanged, so the overlay's in-place hint positioning still lines up.
+scan_file="$raw_file"
+if [ -n "$origin_preview" ]; then
+  scan_file="$(mktemp "${TMPDIR:-/tmp}/quicklook-hint-scan.XXXXXX")"
+  strip_pager_footer <"$raw_file" >"$scan_file"
+fi
+
 # Clipboard-first, IMMEDIATE: the user who just selected+copied the exact
 # token ON SCREEN wants it open, not a picker. Gated on the text actually
 # being visible in the origin snapshot, so a stale clipboard from an hour ago
@@ -124,10 +137,11 @@ fi
       printf '%s\t%s\t%s\t%-5s %s\n' "$raw" "$line_no" "$(quicklook_link_uri "$raw" || true)" "$kind" "$raw"
       n=$((n + 1))
       [ "$n" -ge "${#QUICKLOOK_HINT_KEYS}" ] && break
-    done < <(pick_scan_text <"$raw_file")
+    done < <(pick_scan_text <"$scan_file")
   } >"$tokens_file.part"
   mv -f "$tokens_file.part" "$tokens_file"
   rm -f "$raw_file" 2>/dev/null
+  [ "$scan_file" = "$raw_file" ] || rm -f "$scan_file" 2>/dev/null
 ) &
 
 # Answer the viewer gate HERE, in the action's own context, and hand the

@@ -1027,6 +1027,27 @@ render_any() {
 # uses on the file-viewer pane. Both the Ctrl+click path (open-link.sh) and
 # the hint-pick path (open-popup.sh) route through here, so a drill-down
 # stacks the same way whichever one you used.
+# strip_pager_footer: stdin -> stdout, dropping the LAST non-blank row.
+#
+# In a preview pane that row is less's bottom prompt - our key-hint footer
+# ("doc.md · q quit · o viewer · ...") - which is chrome, not document
+# content. The hint scanner cannot tell the difference, so it was handing out
+# hint letters for the footer's own text: the object name became a target,
+# and the `/` in "/ search" became a target that opens the FILESYSTEM ROOT in
+# the file viewer. Two wasted letters, one of them a trap.
+#
+# Keyed on position rather than on the hint text because the footer is
+# truncated to the pane width, so matching QUICKLOOK_KEY_HINT would miss
+# whenever it is clipped. less always paints its prompt on the bottom row, so
+# with an empty QUICKLOOK_KEY_HINT this still correctly drops the bare `:`
+# prompt.
+strip_pager_footer() {
+  awk '
+    { ln[NR] = $0; if ($0 ~ /[^[:space:]]/) last = NR }
+    END { for (i = 1; i <= NR; i++) if (i != last) print ln[i] }
+  '
+}
+
 # pane_is_preview <pane-id>: rc 0 iff that pane is a quicklook preview, and
 # echoes its cwd. QUERY-CLASS RPC (`pane list`), so it is safe ONLY from an
 # action context; calling it from inside an overlay pane risks the same

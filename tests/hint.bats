@@ -91,3 +91,35 @@ setup() {
   uniq_count="$(printf '%s' "$QUICKLOOK_HINT_KEYS" | fold -w1 | sort -u | wc -l | tr -d ' ')"
   [ "$uniq_count" -eq "${#QUICKLOOK_HINT_KEYS}" ]
 }
+
+# The preview's bottom row is less's prompt (our key-hint footer), not
+# document content. The scanner cannot tell, so it used to hand out hint
+# letters for the footer's own text: the object name became a target, and the
+# `/` in "/ search" became one that opens the FILESYSTEM ROOT in the viewer.
+@test "strip_pager_footer drops the last non-blank row only" {
+  run bash -c ". '$LIB'; printf 'alpha\nbravo\nfoot · q quit\n' | strip_pager_footer"
+  [ "$status" -eq 0 ]
+  [ "${lines[0]}" = "alpha" ]
+  [ "${lines[1]}" = "bravo" ]
+  [ "${#lines[@]}" -eq 2 ]
+}
+
+@test "strip_pager_footer keeps rows above the footer at their original index" {
+  # The overlay paints hints by line number against the UNstripped snapshot,
+  # so only the footer row may vanish; every row above it must keep its index.
+  run bash -c ". '$LIB'; printf 'a\n\nb\nfoot · q quit\n\n\n' | strip_pager_footer | sed -n '3p'"
+  [ "$status" -eq 0 ]
+  [ "$output" = "b" ]
+}
+
+@test "strip_pager_footer removes exactly one row" {
+  run bash -c ". '$LIB'; printf 'a\n\nb\nfoot · q quit\n\n\n' | strip_pager_footer | wc -l | tr -d ' '"
+  [ "$status" -eq 0 ]
+  [ "$output" = "5" ]
+}
+
+@test "strip_pager_footer on empty input is a no-op" {
+  run bash -c ". '$LIB'; printf '' | strip_pager_footer"
+  [ "$status" -eq 0 ]
+  [ -z "$output" ]
+}
