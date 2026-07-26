@@ -2,6 +2,20 @@
 
 ## Unreleased
 
+- Ctrl+clicking a path inside a preview now opens it **in the same pane**,
+  stacked. `less`'s own file list is the stack: the click pushes with `:e`,
+  and `,` or Backspace pops back to the file underneath at its remembered
+  scroll position. `q` still closes the pane. Nothing extra runs to make this
+  work, the pane is still exactly one process.
+- Markdown previews are file-backed again, which fixes two things at once:
+  `less` knows the filename, so the footer name and the `o` / `e` / `D`
+  escalations work from a `.md` and not just from code, and there is a file
+  list to stack on. Rendering moved into a `LESSOPEN` preprocessor
+  (`scripts/render-open.sh`) that any renderer can opt into by declaring an
+  `emit_<kind>` half. Kinds that paint the terminal directly (images, gifs,
+  media, office, svg) keep their own renderer and fall back to the raw file
+  if pushed onto the stack.
+
 - Paths and URLs in a preview are Ctrl+clickable. The pager now wraps every
   path/URL-shaped span in the same OSC-8 sentinel the hint overlay uses, so
   a click routes through the `virtual-token` handler and opens that object.

@@ -977,11 +977,83 @@ render_any() {
   local path="$1" line="${2:-}" kind
   for kind in "${RENDER_KINDS[@]}"; do
     if "match_render_$kind" "$path"; then
+      # A kind that declares emit_<kind> is FILE-BACKED: less opens the real
+      # file and calls render-open.sh as its LESSOPEN preprocessor, so less
+      # keeps the filename (the footer name and the o/e/D %-expansions all
+      # need it) and owns a file LIST, which is what the push/pop stack is
+      # built on. A kind with no emit_ (image, media, office, svg, gif -
+      # they paint the terminal directly and block on a key) keeps its own
+      # renderer and is simply not a stack participant.
+      if declare -f "emit_$kind" >/dev/null 2>&1; then
+        render_file_backed "$path" "$line"
+        return $?
+      fi
       "render_$kind" "$path" "$line"
       return $?
     fi
   done
   return 1
+}
+
+# emit_supported <path>: does the kind claiming <path> have an emit_ half?
+# Asked BEFORE the emit pipeline runs, because pad_to_pane_height would
+# happily emit blank padding for a kind that produced nothing, and less reads
+# any output at all as "the preprocessor handled it" - so an image pushed
+# onto the stack with `:e` would render as a screen of blanks instead of
+# falling back to the raw file. Checking first keeps the pipeline STREAMING;
+# buffering emit_any's output to test it for emptiness would hold a whole
+# rendered file in memory.
+emit_supported() {
+  local path="$1" kind
+  for kind in "${RENDER_KINDS[@]}"; do
+    if "match_render_$kind" "$path"; then
+      declare -f "emit_$kind" >/dev/null 2>&1
+      return $?
+    fi
+  done
+  return 1
+}
+
+# emit_any <path>: the render-registry's TEXT half - write the rendered form
+# of <path> to stdout and page nothing. Used by scripts/render-open.sh (the
+# LESSOPEN preprocessor). Returns 1 when no kind claims the path or the
+# claiming kind has no emit_ half, which is LESSOPEN's "no output" contract:
+# less then falls back to showing the file raw.
+emit_any() {
+  local path="$1" kind
+  for kind in "${RENDER_KINDS[@]}"; do
+    if "match_render_$kind" "$path"; then
+      declare -f "emit_$kind" >/dev/null 2>&1 || return 1
+      "emit_$kind" "$path"
+      return $?
+    fi
+  done
+  return 1
+}
+
+# render_file_backed <target> [line]: exec less ON THE REAL FILE, with
+# render-open.sh as the input preprocessor. One copy of the lesskey / VISUAL
+# / prompt wiring that text.sh used to own alone.
+#
+# The preprocessor also does the gutter and the pane-height pad, so there is
+# no longer a short-file special case that pipes (and thereby loses the
+# filename): every file-backed preview, short or long, is stack-capable.
+render_file_backed() {
+  local target="$1" line="${2:-}"
+  local lesskey_args=()
+  [ -f "$LIB_DIR/../lesskey" ] && lesskey_args=(--lesskey-src="$LIB_DIR/../lesskey")
+  pager_prompt_args
+
+  export VISUAL="$LIB_DIR/escalate.sh"
+  export QUICKLOOK_EDITOR_SCRIPT="$LIB_DIR/escalate-editor.sh"
+  # A command STRING less hands to a shell, so the inner quotes are literal
+  # and an array cannot be used here (same SC2089/SC2090 case text.sh had).
+  # shellcheck disable=SC2089
+  LESSOPEN="|$LIB_DIR/render-open.sh %s"
+  # shellcheck disable=SC2090
+  export LESSOPEN
+  # shellcheck disable=SC2086
+  exec less -R "${lesskey_args[@]}" "${PAGER_PROMPT_ARGS[@]}" ${line:++$line} "$target"
 }
 
 # render_hint_for_ext <ext> -> prints the recommended external tool for a
