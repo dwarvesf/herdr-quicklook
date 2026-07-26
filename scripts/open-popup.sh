@@ -11,9 +11,22 @@
 # hint.sh; same precedent as escalate.sh driving the file-viewer).
 set -u
 
-herdr_bin="${HERDR_BIN_PATH:-herdr}"
+script_dir="$(cd "$(dirname "${BASH_SOURCE[0]:-$0}")" && pwd)"
+# shellcheck source=scripts/lib.sh
+. "$script_dir/lib.sh"
+
 token="${1:-}"
 [ -n "$token" ] || exit 0
+
+# Picked from INSIDE a preview? Then push onto that preview's stack rather
+# than opening a second surface, so a hint drill-down stacks exactly like a
+# Ctrl+click does. hint.sh answered the "is it a preview" question for us in
+# the action context, because it needs a query RPC and we are running inside
+# an overlay pane where those are unsafe. This call is write-only.
+if [ "${QUICKLOOK_ORIGIN_PREVIEW:-}" = 1 ]; then
+  push_resolved_into_pane "${QUICKLOOK_ORIGIN_PANE:-}" "$token" \
+    "${QUICKLOOK_ORIGIN_CWD:-}" && exit 0
+fi
 
 # QUICKLOOK_OPEN_PLACEMENT=tab opens a FULL persistent tab pane instead of
 # the transient popup (the hint overlay's UPPERCASE pick).

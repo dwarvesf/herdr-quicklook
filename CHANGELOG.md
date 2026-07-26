@@ -2,6 +2,13 @@
 
 ## Unreleased
 
+- The hint picker works inside a preview, and a pick now STACKS. Press the
+  hint key over a preview and every openable token in it gets a one-key
+  label, exactly as it does over a terminal pane; choosing one pushes it
+  onto that preview's stack instead of opening a second surface, so the
+  keyboard route and the Ctrl+click route behave identically. `,` or
+  Backspace still pops.
+
 - Ctrl+clicking a path inside a preview now opens it **in the same pane**,
   stacked. `less`'s own file list is the stack: the click pushes with `:e`,
   and `,` or Backspace pops back to the file underneath at its remembered

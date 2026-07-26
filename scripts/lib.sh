@@ -1014,6 +1014,71 @@ render_any() {
   return 1
 }
 
+# push_into_preview <pane-id> <token>: if <pane-id> is a quicklook preview
+# pane already paging a file, PUSH <token> onto that pane's stack instead of
+# opening another surface, and return 0. Returns 1 when the caller should
+# fall back to spawning (not a preview pane, no pane id, no jq, or a token
+# that is not a local file - a URL belongs in the browser and a SHA in
+# `git show`, neither of which `:e` can page).
+#
+# `:e <path>` appends to less's file list and jumps to it, so the pane's own
+# file list IS the stack; `,` / Backspace (remove-file) pops back. Driving
+# another pane's keys this way is the mechanism open-in-viewer.sh already
+# uses on the file-viewer pane. Both the Ctrl+click path (open-link.sh) and
+# the hint-pick path (open-popup.sh) route through here, so a drill-down
+# stacks the same way whichever one you used.
+# pane_is_preview <pane-id>: rc 0 iff that pane is a quicklook preview, and
+# echoes its cwd. QUERY-CLASS RPC (`pane list`), so it is safe ONLY from an
+# action context; calling it from inside an overlay pane risks the same
+# deadlock `pane read` hits (see hint.sh). That is why the hint flow asks
+# this question in hint.sh, the action, and passes the ANSWER down to the
+# overlay rather than letting the overlay ask.
+pane_is_preview() {
+  local pane="$1" row label
+  [ -n "$pane" ] || return 1
+  command -v jq >/dev/null 2>&1 || return 1
+  row="$("$herdr_bin" pane list 2>/dev/null \
+    | jq -r --arg p "$pane" '.result.panes[] | select(.pane_id==$p) | "\(.label // "")\t\(.cwd // "")"' 2>/dev/null | head -1)"
+  [ -n "$row" ] || return 1
+  label="${row%%$'\t'*}"
+  case "$label" in
+    Preview*) printf '%s' "${row#*$'\t'}"; return 0 ;;
+  esac
+  return 1
+}
+
+# push_resolved_into_pane <pane-id> <token> [cwd]: PUSH <token> onto that
+# pane's stack. Write-only (`send-text` / `send-keys`), no query RPC, so this
+# is safe from inside an overlay pane too - the same class of call
+# escalate.sh and open-in-viewer.sh already make.
+#
+# `:e <path>` appends to less's file list and jumps to it, so the pane's own
+# file list IS the stack and `,` / Backspace (remove-file) pops back. rc 1
+# means "not pushable, spawn instead": a URL belongs in the browser and a SHA
+# in `git show`, neither of which `:e` can page.
+push_resolved_into_pane() {
+  local pane="$1" token="$2" pcwd="${3:-}"
+  [ -n "$pane" ] && [ -n "$token" ] || return 1
+  if [ -n "$pcwd" ] && [ -d "$pcwd" ]; then cd "$pcwd" 2>/dev/null || true; fi
+  resolve_any_token "$token" || return 1
+  [ "${RESOLVED_MODE:-}" = file ] && [ -n "${RESOLVED_TARGET:-}" ] || return 1
+
+  "$herdr_bin" pane send-text "$pane" ":e $RESOLVED_TARGET" >/dev/null 2>&1
+  "$herdr_bin" pane send-keys "$pane" Enter >/dev/null 2>&1
+  if [ -n "${RESOLVED_LINE:-}" ]; then
+    "$herdr_bin" pane send-text "$pane" "${RESOLVED_LINE}g" >/dev/null 2>&1
+  fi
+  return 0
+}
+
+# push_into_preview <pane-id> <token>: the ACTION-context convenience, both
+# halves together. Never call this from inside an overlay pane.
+push_into_preview() {
+  local pane="$1" token="$2" pcwd
+  pcwd="$(pane_is_preview "$pane")" || return 1
+  push_resolved_into_pane "$pane" "$token" "$pcwd"
+}
+
 # emit_supported <path>: does the kind claiming <path> have an emit_ half?
 # Asked BEFORE the emit pipeline runs, because pad_to_pane_height would
 # happily emit blank padding for a kind that produced nothing, and less reads

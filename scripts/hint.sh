@@ -36,6 +36,21 @@ if [ -z "$origin_pane" ] && [ -n "$ctx" ] && command -v jq >/dev/null 2>&1; then
   origin_pane="$(printf '%s' "$ctx" | jq -r '.focused_pane_id // empty' 2>/dev/null || true)"
 fi
 
+# Is the hint being taken over a PREVIEW pane? If so a pick should push onto
+# that preview's stack instead of spawning another surface. The question is
+# asked HERE, in the action, because it needs a query-class RPC (`pane list`)
+# and those are unsafe from inside the overlay pane that will act on the
+# answer - so the overlay is handed the answer, not the question.
+origin_preview=""
+origin_cwd=""
+if [ -n "$origin_pane" ]; then
+  if origin_cwd="$(pane_is_preview "$origin_pane")"; then
+    origin_preview=1
+  else
+    origin_cwd=""
+  fi
+fi
+
 repo=""
 if [ -n "$ctx" ] && command -v jq >/dev/null 2>&1; then
   repo="$(printf '%s' "$ctx" | jq -r '.focused_pane_cwd // .workspace_cwd // empty' 2>/dev/null || true)"
@@ -136,7 +151,10 @@ set -- plugin pane open \
   --env "QUICKLOOK_VIEWER_OK=$viewer_ok" \
   --env "QUICKLOOK_DEBUG_LOG=${QUICKLOOK_DEBUG_LOG:-}" \
   --env "QUICKLOOK_HINT_TOKENS_FILE=$tokens_file" \
-  --env "QUICKLOOK_HINT_SNAP_FILE=$snap_file"
+  --env "QUICKLOOK_HINT_SNAP_FILE=$snap_file" \
+  --env "QUICKLOOK_ORIGIN_PANE=$origin_pane" \
+  --env "QUICKLOOK_ORIGIN_PREVIEW=$origin_preview" \
+  --env "QUICKLOOK_ORIGIN_CWD=$origin_cwd"
 
 if [ -n "$repo" ] && [ -d "$repo" ]; then
   set -- "$@" --env "QUICKLOOK_HINT_CWD=$repo"
