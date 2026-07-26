@@ -1,5 +1,21 @@
 # Changelog
 
+## Unreleased
+
+- Markdown previews use the pane's real width again. Every caller measured
+  with `tput cols` from inside a command substitution, where stdout is a
+  pipe, so tput answered with the terminfo default 80: prose re-wrapped into
+  a narrow ragged column and tables were squeezed into 80 columns of a much
+  wider pane. The width is now read off `/dev/tty` (the same way the
+  pane-height padding already did it), minus the left gutter, so a
+  full-width row no longer overflows and soft-wraps its own tail. Same fix
+  for the PR preview.
+- Markdown tables get a rule between rows. glamour draws only the header
+  rule and exposes no style key for the rest, so multi-line rows ran
+  together; the renderer now injects a marker row per gap and swaps each
+  rendered marker for a copy of that table's own header rule. Set
+  `QUICKLOOK_TABLE_RULES=0` to keep glow's bare tables.
+
 ## 0.6.0 (2026-07-26)
 
 - `git show` renders in colour again. git only colourises when stdout is a

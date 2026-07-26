@@ -50,12 +50,65 @@ _markdown_glow_style() {
   printf 'auto'
 }
 
+# glamour draws a table's header rule and its column separators, but has no
+# per-row rule and no style key that turns one on (border_row / row_border /
+# border / table_border are all ignored by glow 2.1.2), so multi-line rows
+# run together , the readability complaint these two filters fix.
+#
+# _md_table_spacers (pre): inject a marker ROW between every pair of data
+# rows, so glamour lays it out with the table's real column geometry.
+# _md_table_rules (post): swap each rendered marker line for a copy of that
+# table's own header rule, which glamour already drew at exactly the right
+# width. Splitting it this way is what keeps the filter ANSI-safe , we never
+# parse styled output, we replace whole lines and reuse a line glamour made.
+MD_TABLE_MARK='⟦qlhr⟧'
+
+_md_table_spacers() {
+  awk -v mark="$MD_TABLE_MARK" '
+    /^[ \t]*(```|~~~)/ { fence = !fence; print; next }
+    fence { print; next }
+    $0 !~ /^[ \t]*\|/ { intable = 0; print; next }
+    # the |---|---| delimiter row opens the table and fixes its column count
+    $0 ~ /^[ \t]*\|[ \t:|-]+\|[ \t]*$/ {
+      intable = 1; seen = 0; pipes = gsub(/\|/, "|"); print; next
+    }
+    {
+      if (intable && seen) {
+        s = "|" mark
+        for (i = 1; i < pipes; i++) s = s "|"
+        print s
+      }
+      if (intable) seen = 1
+      print
+    }
+  '
+}
+
+# `┼` only ever appears in glamour's header rule, so it is the cheapest
+# byte-literal way to spot that line without decoding ANSI or multibyte
+# content. h stores it; g replays it over the marker line. The match is on
+# the marker's opening bracket alone, so a narrow first column that ellipses
+# the marker's tail still gets swapped.
+_md_table_rules() {
+  sed -e '/┼/h' -e '/⟦/{ g; }'
+}
+
+_md_glow() {
+  local target="$1" cols="$2" style
+  style="$(_markdown_glow_style)"
+  if [ "${QUICKLOOK_TABLE_RULES:-1}" = 0 ]; then
+    glow -s "$style" -w "$cols" -- "$target"
+    return
+  fi
+  _md_table_spacers <"$target" | glow -s "$style" -w "$cols" - | _md_table_rules
+}
+
 render_markdown() {
-  local target="$1" cols
+  local target="$1"
   # glow's stdout is a PIPE inside render_command_in_pager, so its auto
   # width is a hard 80 no matter how wide the pane is; source lines wider
-  # than 80 then double-wrap into ragged orphan fragments. stdout here is
-  # still the pane's TTY, so measure it and pass the width explicitly.
-  cols="$(tput cols 2>/dev/null)" || cols=80
-  render_command_in_pager glow -s "$(_markdown_glow_style)" -w "${cols:-80}" -- "$target"
+  # than 80 then double-wrap into ragged orphan fragments, and tables get
+  # squeezed into 80 columns of a much wider pane. pane_cols (lib.sh) reads
+  # the true width off /dev/tty and already subtracts the pad_left gutter.
+  render_command_in_pager _md_glow "$target" "$(pane_cols)"
 }

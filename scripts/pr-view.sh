@@ -38,7 +38,9 @@ if [ "$head_block" = "$out" ]; then
 fi
 body="${out#*$'\n'--$'\n'}"
 
-cols="$(tput cols 2>/dev/null)" || cols=100
+# pane_cols, not `tput cols`: this is a command substitution, so tput reads
+# the terminfo default 80 off a pipe instead of the pane's real width.
+cols="$(pane_cols)"
 case "$cols" in '' | *[!0-9]*) cols=100 ;; esac
 [ "$cols" -gt 120 ] && cols=120
 
