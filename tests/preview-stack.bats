@@ -22,17 +22,25 @@ setup() {
   MARKER="$FIX/sent.log"
   STUB="$(mktemp -d)"
 
-  # herdr stub: answers `pane list` with a fixture roster and records every
-  # send-text / send-keys argv so a test can assert what was driven.
+  # herdr stub: answers `pane list` with a fixture roster, `pane
+  # process-info` with a foreground that is `less` ONLY for the real preview
+  # (p-prev) and an agent for the mislabeled one (p-mislabel), and records
+  # every send-text / send-keys argv so a test can assert what was driven.
   cat > "$STUB/herdr" <<SH
 #!/usr/bin/env bash
 case "\$1 \$2" in
   "pane list")
     printf '%s' '{"result":{"panes":[
       {"pane_id":"p-prev","label":"Preview: target.md","cwd":"$FIX/repo"},
+      {"pane_id":"p-mislabel","label":"Preview: stale.md","cwd":"$FIX/repo"},
       {"pane_id":"p-shell","label":null,"cwd":"$FIX/repo"},
       {"pane_id":"p-files","label":"Files","cwd":"$FIX/repo"}
     ]}}'
+    ;;
+  "pane process-info")
+    fg=node
+    [ "\$4" = "p-prev" ] && fg=less
+    printf '{"result":{"process_info":{"foreground_processes":[{"name":"%s"}]}}}' "\$fg"
     ;;
   "pane send-text"|"pane send-keys") printf '%s\n' "\$*" >> "$MARKER" ;;
 esac
@@ -174,4 +182,28 @@ sent() { cat "$MARKER" 2>/dev/null; }
 @test "emit_any: returns non-zero when nothing claims the path" {
   run emit_any "$FIX/repo/definitely-absent"
   [ "$status" -ne 0 ]
+}
+
+# The incident this guards: a popup-hosted preview's rename landed on the
+# pane UNDERNEATH (popups are unlisted, `pane current` returns the focused
+# listed pane), so agent/chat panes ended up wearing "Preview:" labels - and
+# a file pick then typed ":e <path>" plus Enter straight into the user's
+# chat box. The label is necessary but NOT sufficient: the pane must also
+# actually be paging (foreground includes less). Fail closed.
+@test "pane_is_preview: a MISLABELED agent pane (Preview label, no less) is rejected" {
+  run pane_is_preview "p-mislabel"
+  [ "$status" -ne 0 ]
+}
+
+@test "push_into_preview: refuses to type into a mislabeled agent pane" {
+  run push_into_preview "p-mislabel" "target.md"
+  [ "$status" -ne 0 ]
+  [ -z "$(sent)" ]
+}
+
+@test "name_pane: QUICKLOOK_ANON_PANE=1 skips the rename RPC, keeps the footer label" {
+  run bash -c ". '$LIB'; QUICKLOOK_ANON_PANE=1 name_pane 'doc.md' '$FIX/repo/target.md'; printf 'label=%s' \"\$QUICKLOOK_OBJECT_LABEL\""
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"label=target.md"* ]]
+  ! grep -q "pane rename" "$MARKER" 2>/dev/null
 }

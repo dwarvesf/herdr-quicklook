@@ -114,29 +114,46 @@ SH
 # target it for a second overlay and pane_is_preview cannot match it for a
 # stack push. A pick landing there ends the drill-down.
 @test "open-popup forwards the token into an addressable overlay by default" {
+  cat >"$STUB/herdr" <<SH
+#!/usr/bin/env bash
+printf '%s\n' "\$*" >>"$FIX/sent.log"
+SH
+  chmod +x "$STUB/herdr"
   export HERDR_BIN_PATH="$STUB/herdr"
   run bash "$ROOT/scripts/open-popup.sh" 'src/target.md'
   [ "$status" -eq 0 ]
-  grep -qx 'overlay' <<<"$output"
-  ! grep -qx 'popup' <<<"$output"
-  ! grep -qx -- '--width' <<<"$output"
-  grep -qx 'QUICKLOOK_TOKEN=src/target.md' <<<"$output"
+  for _ in 1 2 3 4 5 6; do [ -f "$FIX/sent.log" ] && break; sleep 0.3; done
+  grep -q -- '--placement overlay' "$FIX/sent.log"
+  ! grep -q -- '--width' "$FIX/sent.log"
+  grep -q -- 'QUICKLOOK_TOKEN=src/target.md' "$FIX/sent.log"
 }
 
 @test "open-popup honors QUICKLOOK_OPEN_PLACEMENT=popup (opt back into 90% sizing)" {
+  cat >"$STUB/herdr" <<SH
+#!/usr/bin/env bash
+printf '%s\n' "\$*" >>"$FIX/sent.log"
+SH
+  chmod +x "$STUB/herdr"
   export HERDR_BIN_PATH="$STUB/herdr"
   QUICKLOOK_OPEN_PLACEMENT=popup run bash "$ROOT/scripts/open-popup.sh" 'src/target.md'
   [ "$status" -eq 0 ]
-  grep -qx 'popup' <<<"$output"
-  grep -qx '90%' <<<"$output"
+  for _ in 1 2 3 4 5 6; do [ -f "$FIX/sent.log" ] && break; sleep 0.3; done
+  grep -q -- '--placement popup' "$FIX/sent.log"
+  grep -q -- '90%' "$FIX/sent.log"
 }
 
 @test "open-popup honors QUICKLOOK_OPEN_PLACEMENT=tab (full pane, no size flags)" {
+  cat >"$STUB/herdr" <<SH
+#!/usr/bin/env bash
+printf '%s\n' "\$*" >>"$FIX/sent.log"
+SH
+  chmod +x "$STUB/herdr"
   export HERDR_BIN_PATH="$STUB/herdr"
   QUICKLOOK_OPEN_PLACEMENT=tab run bash "$ROOT/scripts/open-popup.sh" 'src/target.md'
   [ "$status" -eq 0 ]
-  grep -qx 'tab' <<<"$output"
-  ! grep -qx -- '--width' <<<"$output"
+  for _ in 1 2 3 4 5 6; do [ -f "$FIX/sent.log" ] && break; sleep 0.3; done
+  grep -q -- '--placement tab' "$FIX/sent.log"
+  ! grep -q -- '--width' "$FIX/sent.log"
 }
 
 @test "manifest registers the find overlay and action" {
@@ -153,4 +170,63 @@ panes = {item["id"]: item for item in data["panes"]}
 assert actions["find"]["command"] == ["bash", "scripts/find.sh"]
 assert panes["find-pane"]["placement"] == "overlay"
 PY
+}
+
+# ---- picks taken from INSIDE a preview (QUICKLOOK_ORIGIN_PREVIEW=1) ----
+# The origin preview is an overlay, and two overlays in one tab do not stack,
+# so anything spawned by such a pick must go to the popup surface or it
+# renders invisibly behind the origin. A file token never spawns at all: it
+# pushes onto the origin's stack with :e.
+
+# The push's send-text/send-keys calls are >/dev/null by design, so a stub
+# that echoes argv proves nothing here; it records to a marker file instead.
+@test "preview-origin pick: a FILE token pushes into the origin pane, spawns nothing" {
+  cat >"$STUB/herdr" <<SH
+#!/usr/bin/env bash
+printf '%s\n' "\$*" >>"$FIX/sent.log"
+SH
+  chmod +x "$STUB/herdr"
+  export HERDR_BIN_PATH="$STUB/herdr"
+  cd "$FIX/repo"
+  QUICKLOOK_ORIGIN_PREVIEW=1 QUICKLOOK_ORIGIN_PANE=p-org QUICKLOOK_ORIGIN_CWD="$FIX/repo" \
+    run bash "$ROOT/scripts/open-popup.sh" 'src/target.md'
+  [ "$status" -eq 0 ]
+  grep -q "pane send-text p-org :e $FIX/repo/src/target.md" "$FIX/sent.log"
+  grep -q "pane send-keys p-org Enter" "$FIX/sent.log"
+  ! grep -q "pane open" "$FIX/sent.log"
+}
+
+# The spawn is DETACHED (ignores HUP, fds off the pty) because it outlives
+# the closing hint pane; stdout proves nothing, so the stub records argv to a
+# file and the assertions wait for the detached write.
+@test "preview-origin pick: a NON-FILE token falls back to the POPUP surface, never an overlay" {
+  cat >"$STUB/herdr" <<SH
+#!/usr/bin/env bash
+printf '%s\n' "\$*" >>"$FIX/sent.log"
+SH
+  chmod +x "$STUB/herdr"
+  export HERDR_BIN_PATH="$STUB/herdr"
+  QUICKLOOK_ORIGIN_PREVIEW=1 QUICKLOOK_ORIGIN_PANE=p-org QUICKLOOK_ORIGIN_CWD="$FIX/repo" \
+    run bash "$ROOT/scripts/open-popup.sh" 'https://example.test/x'
+  [ "$status" -eq 0 ]
+  for _ in 1 2 3 4 5 6; do [ -f "$FIX/sent.log" ] && break; sleep 0.3; done
+  grep -q -- '--placement popup' "$FIX/sent.log"
+  ! grep -q -- '--placement overlay' "$FIX/sent.log"
+  grep -q -- '90%' "$FIX/sent.log"
+}
+
+@test "preview-origin pick: an EXPLICIT tab placement still wins over the popup fallback" {
+  cat >"$STUB/herdr" <<SH
+#!/usr/bin/env bash
+printf '%s\n' "\$*" >>"$FIX/sent.log"
+SH
+  chmod +x "$STUB/herdr"
+  export HERDR_BIN_PATH="$STUB/herdr"
+  QUICKLOOK_ORIGIN_PREVIEW=1 QUICKLOOK_ORIGIN_PANE=p-org QUICKLOOK_ORIGIN_CWD="$FIX/repo" \
+    QUICKLOOK_OPEN_PLACEMENT=tab \
+    run bash "$ROOT/scripts/open-popup.sh" 'https://example.test/x'
+  [ "$status" -eq 0 ]
+  for _ in 1 2 3 4 5 6; do [ -f "$FIX/sent.log" ] && break; sleep 0.3; done
+  grep -q -- '--placement tab' "$FIX/sent.log"
+  ! grep -q -- '--placement popup' "$FIX/sent.log"
 }

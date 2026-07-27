@@ -375,6 +375,13 @@ name_pane() {
   # prompt to the width, so a long name can never wrap or shift a jump.
   QUICKLOOK_OBJECT_LABEL="$label"
   export QUICKLOOK_OBJECT_LABEL
+  # An ANONYMOUS pane (popup placement) must not rename anything: a popup is
+  # not listed, so `pane current` returns the focused LISTED pane - the one
+  # UNDERNEATH - and the rename lands on an innocent agent/chat pane. Those
+  # stale "Preview:" labels then poisoned pane_is_preview, and a later file
+  # pick typed ":e <path>" into the user's chat box. The footer label above
+  # still applies; only the rename RPC is skipped.
+  [ -n "${QUICKLOOK_ANON_PANE:-}" ] && return 0
   command -v jq >/dev/null 2>&1 || return 0
   pane="$("$herdr_bin" pane current 2>/dev/null | jq -r '.result.pane.pane_id // empty' 2>/dev/null)"
   [ -n "$pane" ] && "$herdr_bin" pane rename "$pane" "Preview: $label" >/dev/null 2>&1
@@ -1065,7 +1072,7 @@ strip_pager_footer() {
 # this question in hint.sh, the action, and passes the ANSWER down to the
 # overlay rather than letting the overlay ask.
 pane_is_preview() {
-  local pane="$1" row label
+  local pane="$1" row label fg
   [ -n "$pane" ] || return 1
   command -v jq >/dev/null 2>&1 || return 1
   row="$("$herdr_bin" pane list 2>/dev/null \
@@ -1073,7 +1080,22 @@ pane_is_preview() {
   [ -n "$row" ] || return 1
   label="${row%%$'\t'*}"
   case "$label" in
-    Preview*) printf '%s' "${row#*$'\t'}"; return 0 ;;
+    Preview*) ;;
+    *) return 1 ;;
+  esac
+  # The label alone is NOT sufficient, and this is a safety property, not
+  # tidiness: a popup-hosted preview's name_pane used to rename whichever
+  # LISTED pane was focused (a popup is not listed, so `pane current`
+  # returned the pane underneath), which left agent/chat panes wearing
+  # stale "Preview:" labels. Trusting one of those made a file pick TYPE
+  # ":e <path>" plus Enter straight into the user's chat box. So a preview
+  # must also actually be paging: fail CLOSED unless the pane's foreground
+  # includes less (the caller then falls back to spawning, which is
+  # harmless in every case).
+  fg="$("$herdr_bin" pane process-info --pane "$pane" 2>/dev/null \
+    | jq -r '[.result.process_info.foreground_processes[]?.name] | join(",")' 2>/dev/null)"
+  case ",$fg," in
+    *,less,*) printf '%s' "${row#*$'\t'}"; return 0 ;;
   esac
   return 1
 }

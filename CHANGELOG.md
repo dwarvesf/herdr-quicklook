@@ -2,6 +2,34 @@
 
 ## Unreleased
 
+- A pick can no longer type into your chat. Popup-hosted previews used to
+  rename the pane UNDERNEATH them (a popup is unlisted, so `pane current`
+  resolves to the focused listed pane), leaving agent/chat panes wearing
+  stale "Preview:" labels - and the push path, trusting the label, then
+  typed ":e <path>" plus Enter straight into the user's chat box. Two
+  fixes, either sufficient alone: anonymous panes no longer rename anything
+  (`QUICKLOOK_ANON_PANE`), and a push target must now actually be paging -
+  its foreground must include `less` (`pane process-info`), or the pick
+  fails closed and falls back to spawning.
+
+- Hint picks open again. Three stacked defects made a pick die silently:
+  the key loop forced every lowercase pick into the POPUP surface, and herdr
+  allows one popup at a time, so whenever the hint pane itself ran as a
+  popup its own spawn was refused with "popup already open"; the spawn also
+  ran while the closing hint pane still lived, so even an overlay spawn was
+  born UNDER it (first-wins z-order) - and the detached replacement then
+  died to SIGHUP when the pane's pty was torn down. Picks now spawn from a
+  HUP-immune detached process after the hint pane is gone, into the
+  addressable overlay by default (`tab` via uppercase still wins; the
+  preview-origin non-file fallback goes to the popup).
+- `hint-pane` no longer clobbers `$HOME`. A paint constant was literally
+  named HOME (the ESC[H cursor-home sequence), overwriting the exported
+  real one for every child of a pick: the recents log materialised inside
+  the repo working tree under a directory named `ESC[H`, and the debug log
+  wrote into the same phantom path, which made every in-pane failure above
+  untraceable. Renamed, and the pick path now carries a gated execution
+  trace (`QUICKLOOK_DEBUG_LOG=1`) so the next in-pane death is visible.
+
 - The hint picker is visible when summoned from inside a preview. Two
   overlays in one tab do not stack (herdr keeps the first on top), so the
   hint overlay opened over a preview overlay was focused yet invisible: the
