@@ -5,7 +5,7 @@ covering the token-opening flows and, since v0.4, the render registry itself:
 
 | GIF | Shows |
 |---|---|
-| `hint-flow-tour.gif` | The hero take: `prefix+v` overlays a one-letter hint on every openable token; a letter pick opens `sample.md` (glow) in herdr's 90% popup, a second pick opens `sample.csv` (qsv table, ~40 rows) with `d`/`u` half-page scroll visibly moving it, a third pick UPPERCASES the letter to open `sample.md` again in a full persistent tab pane instead of the popup |
+| `hint-flow-tour.gif` | The hero take, the DRILL-DOWN: `prefix+v` overlays a one-letter hint on every openable token (with the `hint · N target(s)` banner); a letter opens `sample.md` in an addressable preview overlay whose footer teaches the stack (`, back · … · prefix+v pick`); the prefix chord fires a SECOND hint INSIDE that preview; a letter PUSHES `CHECKLIST.md` onto the same pane's stack; `,` pops back to `sample.md`. One pane, any depth. Older takes' 90%-popup pick surface is retired: lowercase picks now open addressable overlays (UPPERCASE still opens a full tab) |
 | `tokens-tour.gif` | Every token kind in one pass: a plain path, a GitHub blob URL (opens the local file), a bare commit SHA (`git show`), a `#123` PR reference (`gh pr view`), a directory (`eza --tree`) |
 | `recents.gif` | `prefix+shift+v`: fzf-pick an older entry, proving the reopen bumps it back to the front |
 | `render-images-tour.gif` | The images story: a png (inline `chafa` ANSI art), a gif (the same `chafa` still-image path - see the landmine below), an svg (`rsvg-convert` -> `chafa`), a pdf (page-1 poster + extracted text) |

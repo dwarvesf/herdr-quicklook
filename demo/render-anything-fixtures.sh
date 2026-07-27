@@ -170,7 +170,18 @@ Read this before touching the inventory tool.
 2. `fruit-stand import sample.csv`
 3. `fruit-stand serve`
 
-See `sample.csv` for the seed data this imports.
+See `sample.csv` for the seed data this imports, and CHECKLIST.md for the
+opening-day tasks.
+EOF
+cat >"$hint_dir/CHECKLIST.md" <<'EOF'
+# Opening-Day Checklist
+
+- [ ] stand assembled and level
+- [ ] price signs match sample.csv
+- [ ] float in the cash box
+- [ ] umbrella up before 9am
+
+Pop back to the setup guide with `,` when done.
 EOF
 {
   echo "fruit,qty,price_usd"

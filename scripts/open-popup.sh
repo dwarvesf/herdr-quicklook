@@ -1,5 +1,7 @@
 #!/usr/bin/env bash
-# open-popup.sh: open a DETERMINED token in herdr's native 90% popup surface,
+# open-popup.sh: route a DETERMINED token - push it onto the origin
+# preview's stack when there is one and the token is a file, else spawn a
+# preview pane (addressable overlay by default),
 # running the preview renderer (so every render type, o/e/d, and the recents
 # log come along). This is the terminal of the hint flow: once the overlay
 # (or the clipboard gate) has settled on one token, the render belongs in a

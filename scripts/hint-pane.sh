@@ -24,8 +24,10 @@
 # precedent). Keys AND mouse clicks read from /dev/tty (SGR mouse tracking:
 # plain left-click on a hinted token opens it, no Ctrl needed - inside this
 # overlay we own the TTY, which herdr's own Ctrl+click-only limit does not
-# reach). A pick opens the token in herdr's 90% POPUP surface (open-popup.sh)
-# - the overlay is for choosing, the popup is for reading. Esc/q cancels.
+# reach). A lowercase pick opens the token in an ADDRESSABLE overlay (or,
+# picked from inside a preview, PUSHES onto that preview's stack); UPPERCASE
+# opens a full tab pane. The overlay is for choosing, the spawned pane is
+# for reading. Esc/q cancels.
 set -u
 
 script_dir="$(cd "$(dirname "${BASH_SOURCE[0]:-$0}")" && pwd)"
@@ -304,7 +306,10 @@ frame+="${body}${EOD}${MOUSE_ON}"
 printf '%s' "$frame"
 
 # open_pick <idx>: route the settled token. A directory goes to the real
-# navigable file-viewer; everything else opens in herdr's 90% POPUP surface
+# navigable file-viewer; everything else goes through open-popup.sh (push
+# into the origin preview for a file, else spawn - addressable overlay by
+# default, tab for the UPPERCASE pick, popup only for the preview-origin
+# non-file fallback)
 # (open-popup.sh spawns it; the popup's preview-pane dispatches file/URL/
 # command itself). The overlay's job ends here.
 open_pick() {
