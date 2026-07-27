@@ -90,9 +90,23 @@ SH
   [ "$status" -eq 0 ]
   [[ "$output" == *"GLOW_ARGS:"* ]]
   [[ "$output" == *"-s auto"* ]]
-  [[ "$output" == *"$FIX/doc.md"* ]]
   [[ "$output" == *"LESS_ARGS:"* ]]
   [[ "$output" == *"-R"* ]]
+}
+
+@test "render_markdown: table rules on (default) - the source is filtered into glow's stdin" {
+  stub_with_glow
+  run render_markdown "$FIX/doc.md"
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"GLOW_ARGS:"*" -"* ]]
+  [[ "$output" != *"$FIX/doc.md"* ]]
+}
+
+@test "render_markdown: QUICKLOOK_TABLE_RULES=0 hands glow the file directly" {
+  stub_with_glow
+  QUICKLOOK_TABLE_RULES=0 run render_markdown "$FIX/doc.md"
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"$FIX/doc.md"* ]]
 }
 
 @test "render_markdown: the line arg is accepted but ignored (best-effort, no error)" {
@@ -145,13 +159,52 @@ SH
   [[ "$output" =~ -w\ [0-9]+ ]]
 }
 
-@test "render_markdown: -w carries the measured TTY width (stubbed tput)" {
+# The pre-fix bug: `tput cols` reads the size off STDOUT, and render_markdown
+# measures inside a command substitution (a pipe), so glow got a hard -w 80 in
+# a 200-column pane. pane_cols reads /dev/tty instead, minus the pad_left
+# gutter, so glow's full-width rows do not then overflow and soft-wrap.
+@test "render_markdown: -w carries the measured pane width minus the gutter" {
   stub_with_glow
-  printf '#!/usr/bin/env bash\nprintf "132\\n"\n' > "$STUB/tput"
-  chmod +x "$STUB/tput"
-  run render_markdown "$FIX/doc.md"
+  run bash -c ". '$LIB'; _pane_cols() { printf '132'; }; render_markdown '$FIX/doc.md'"
   [ "$status" -eq 0 ]
-  [[ "$output" == *"-w 132"* ]]
+  [[ "$output" == *"-w 130"* ]]
+}
+
+@test "render_markdown: an unmeasurable width floors at 80, never 0" {
+  stub_with_glow
+  run bash -c ". '$LIB'; _pane_cols() { printf '0'; }; render_markdown '$FIX/doc.md'"
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"-w 80"* ]]
+}
+
+@test "_pane_cols is silent and numeric with no controlling tty" {
+  run bash -c ". '$LIB'; unset COLUMNS; _pane_cols" < /dev/null
+  [ "$status" -eq 0 ]
+  [ "$output" = "0" ]
+}
+
+# ---- table row rules (glamour draws no per-row rule of its own) ----
+
+@test "_md_table_spacers: inserts a marker row between data rows, never before the first" {
+  printf '| A | B |\n|---|---|\n| one | two |\n| three | four |\n' > "$FIX/tbl.md"
+  run _md_table_spacers < "$FIX/tbl.md"
+  [ "$status" -eq 0 ]
+  [ "$(printf '%s\n' "$output" | grep -c 'qlhr')" -eq 1 ]
+  [ "$(printf '%s\n' "$output" | sed -n '4p')" = "|⟦qlhr⟧||" ]
+}
+
+@test "_md_table_spacers: leaves a table inside a fenced code block alone" {
+  printf '```\n| A | B |\n|---|---|\n| one | two |\n| three | four |\n```\n' > "$FIX/fenced.md"
+  run _md_table_spacers < "$FIX/fenced.md"
+  [ "$status" -eq 0 ]
+  [[ "$output" != *qlhr* ]]
+}
+
+@test "_md_table_rules: replaces the marker line with that table's own header rule" {
+  run bash -c ". '$LIB'; printf ' A   \xe2\x94\x82 B\n\xe2\x94\x80\xe2\x94\x80\xe2\x94\x80\xe2\x94\xbc\xe2\x94\x80\xe2\x94\x80\n one \xe2\x94\x82 two\n \xe2\x9f\xa6qlhr\xe2\x9f\xa7 \xe2\x94\x82\n x   \xe2\x94\x82 y\n' | _md_table_rules"
+  [ "$status" -eq 0 ]
+  [[ "$output" != *qlhr* ]]
+  [ "$(printf '%s\n' "$output" | sed -n '2p')" = "$(printf '%s\n' "$output" | sed -n '4p')" ]
 }
 
 # ---- render_any dispatch: glow-present renders, glow-absent degrades ----

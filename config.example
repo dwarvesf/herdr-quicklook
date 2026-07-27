@@ -26,6 +26,11 @@
 # plugin is installed (so preview and viewer look identical), else "auto".
 #QUICKLOOK_GLOW_STYLE=
 
+# QUICKLOOK_TABLE_RULES: draw a horizontal rule between markdown table rows.
+# glamour draws only the header rule, so multi-line rows run together. Set 0
+# to leave tables exactly as glow renders them.
+#QUICKLOOK_TABLE_RULES=1
+
 # QUICKLOOK_BAT_THEME: bat theme override for code/text previews (and the
 # find pane's fzf preview). UNSET (the default), no --theme flag is passed
 # and your own bat config decides, exactly like herdr-file-viewer, so the

@@ -397,8 +397,35 @@ _pane_rows() {
 # pad_left: one gutter of breathing room between the pane border and the
 # text. Prefix-only, so ANSI colour runs are untouched, and rows are
 # unchanged so a `path:N` jump still lands on the same line.
+PAD_LEFT_COLS=2
 pad_left() {
   sed 's/^/  /'
+}
+
+# _pane_cols: the pane's real width, the column twin of _pane_rows and read
+# the same way and for the same reason. NOT `tput cols`: tput reads the size
+# off STDOUT, and every caller measures inside a command substitution (stdout
+# is a pipe by definition), so tput silently returns the terminfo default 80
+# no matter how wide the pane is. That was the whole "glow wraps at 80 in a
+# 200-column pane" bug.
+_pane_cols() {
+  local sz
+  { sz="$(stty size </dev/tty)"; } 2>/dev/null || sz=""
+  sz="${sz##* }"
+  case "$sz" in '' | *[!0-9]*) sz="${COLUMNS:-0}" ;; esac
+  case "$sz" in '' | *[!0-9]*) sz=0 ;; esac
+  printf '%s' "$sz"
+}
+
+# pane_cols: the width a formatter (glow, gh) may wrap to, i.e. the pane
+# minus the pad_left gutter , without that subtraction every full-width row
+# overflows by the gutter and less soft-wraps its tail onto the next line.
+# Floors at 80 when the size is unreadable, so a formatter never gets 0.
+pane_cols() {
+  local sz
+  sz="$(_pane_cols)"
+  [ "$sz" -gt $((PAD_LEFT_COLS + 20)) ] || sz=$((80 + PAD_LEFT_COLS))
+  printf '%s' "$((sz - PAD_LEFT_COLS))"
 }
 
 pad_to_pane_height() {
