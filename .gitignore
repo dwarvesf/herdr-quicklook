@@ -4,7 +4,11 @@
 AGENTS.md
 WORKFLOW.md
 .kit.toml
-docs/
+docs/*
+# ... except the proof-of-done records: the ship-gate requires them tracked,
+# and they are test/verification records with nothing private in them.
+# (docs/* not docs/: git cannot re-include below an excluded DIRECTORY.)
+!docs/verification/
 .claude/
 
 # local scratch
