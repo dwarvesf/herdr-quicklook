@@ -139,7 +139,10 @@ printf '%s\n' "$STUB/vroot"
 SH
   chmod +x "$STUB/herdr" "$STUB/jq"
   unset QUICKLOOK_GLOW_STYLE HERDR_BIN_PATH
-  run render_markdown "$FIX/doc.md"
+  # linkify off: this asserts what glow was INVOKED with, and the linkifier
+  # legitimately wraps the style path in an OSC-8 link on the way to the
+  # pager, which splits the literal "-s <path>" run.
+  QUICKLOOK_LINKIFY=0 run render_markdown "$FIX/doc.md"
   [ "$status" -eq 0 ]
   [[ "$output" == *"-s $STUB/vroot/assets/markdown-style.json"* ]]
 }

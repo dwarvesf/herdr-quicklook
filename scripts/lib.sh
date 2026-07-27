@@ -428,6 +428,97 @@ pane_cols() {
   printf '%s' "$((sz - PAD_LEFT_COLS))"
 }
 
+# linkify: stdin -> stdout, wrapping every path/URL-shaped span in the
+# OSC-8 sentinel URI the `virtual-token` handler already understands, so a
+# Ctrl+click inside the preview opens that object. Same transport hint-pane
+# uses (quicklook_link_uri / open-link); this is the pager-side emitter.
+#
+# WHY this is not the linkify pane that PR #23 deleted: that one CLASSIFIED
+# every span (resolve + git lookups per token), which is why it had to be
+# scoped to one visible screen and still ran in a background subshell. This
+# one classifies NOTHING. It matches on SHAPE only, never touches the
+# filesystem, and leaves resolution to the click path, which already
+# resolves and already reports a miss ("not a file I can find"). A
+# false-positive link that fails on click is a far cheaper mistake than a
+# preview that takes a second to paint, so the whole document can be linked
+# in one awk pass with zero forks.
+#
+# Encoding must be byte-identical to jq's @uri (quicklook_token_from_link
+# re-encodes and demands a byte-for-byte match before it returns a token),
+# i.e. RFC 3986 unreserved [A-Za-z0-9._~-] verbatim, everything else %XX in
+# UPPERCASE hex. Verified against `jq -rn '$t|@uri'`.
+#
+# ANSI safety: bytes inside an escape sequence are copied through untouched
+# (only the plain-text runs between them are scanned), and a line that
+# already carries an OSC-8 link is passed through whole - glow emits its own
+# hyperlinks for markdown link syntax and nesting them would corrupt both.
+linkify() {
+  [ "${QUICKLOOK_LINKIFY:-1}" = 0 ] && { cat; return 0; }
+  awk -v prefix="$QUICKLOOK_LINK_PREFIX" '
+    BEGIN {
+      esc = sprintf("%c", 27)
+      for (i = 0; i < 256; i++) ord[sprintf("%c", i)] = i
+      unreserved = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789._~-"
+      for (i = 1; i <= length(unreserved); i++) safe[substr(unreserved, i, 1)] = 1
+      # Leftmost-longest over: a URL, a slashed path with an extension, or a
+      # bare filename with a known extension. Each may carry a :LINE suffix.
+      ext = "(md|markdown|sh|bash|go|rs|py|ts|tsx|js|jsx|json|toml|yaml|yml|txt|c|h|cpp|rb|sql|css|html|bats)"
+      url = "https?://[^[:space:]<>\"]+"
+      # The leading `/` MUST be inside the start class: without it an absolute
+      # path matches from its second character, the link carries a relative
+      # `var/folders/...`, and the click resolves against the wrong root.
+      path = "[A-Za-z0-9_~/][A-Za-z0-9_./~+-]*/[A-Za-z0-9_.+-]+\\.[A-Za-z0-9]+(:[0-9]+)?"
+      bare = "[A-Za-z0-9_][A-Za-z0-9_.+-]*\\." ext "(:[0-9]+)?"
+      pat = "(" url ")|(" path ")|(" bare ")"
+    }
+    function encode(s,   i, c, out) {
+      out = ""
+      for (i = 1; i <= length(s); i++) {
+        c = substr(s, i, 1)
+        out = out (c in safe ? c : sprintf("%%%02X", ord[c]))
+      }
+      return out
+    }
+    function wrap(tok) {
+      return esc "]8;;" prefix encode(tok) esc "\\" tok esc "]8;;" esc "\\"
+    }
+    # scan(text): link every match in one plain-text run.
+    function scan(t,   out, m, l) {
+      out = ""
+      while (match(t, pat)) {
+        m = substr(t, RSTART, RLENGTH); l = RLENGTH
+        out = out substr(t, 1, RSTART - 1) wrap(m)
+        t = substr(t, RSTART + l)
+      }
+      return out t
+    }
+    {
+      if (index($0, esc "]8;")) { print; next }        # already hyperlinked
+      if (index($0, esc) == 0) { print scan($0); next } # fast path: no ANSI
+      # Mixed line: copy escape sequences verbatim, scan only the text runs.
+      line = $0; out = ""; run = ""
+      while (length(line) > 0) {
+        if (substr(line, 1, 1) == esc) {
+          # SGR/CSI (ESC[...letter) or a short 2-char escape; copy verbatim.
+          # seqlen is captured BEFORE scan() runs: scan calls match(), which
+          # clobbers RLENGTH, and a no-match leaves it -1, so reading RLENGTH
+          # afterwards makes substr(line, 0) return the whole line and this
+          # loop never terminates.
+          if (match(line, /^.\[[0-9;?]*[A-Za-z]/)) {
+            seqlen = RLENGTH
+            out = out scan(run) substr(line, 1, seqlen); run = ""
+            line = substr(line, seqlen + 1); continue
+          }
+          out = out scan(run) substr(line, 1, 2); run = ""
+          line = substr(line, 3); continue
+        }
+        run = run substr(line, 1, 1); line = substr(line, 2)
+      }
+      print out scan(run)
+    }
+  '
+}
+
 pad_to_pane_height() {
   local rows
   rows="$(_pane_rows)"
@@ -810,7 +901,7 @@ render_command_in_pager() {
   # `printf | less` in a fresh pane, so this is the pane's behaviour, not
   # ours). Padding at END keeps the stream streaming: nothing is buffered,
   # the blank rows are only appended once the real output has ended.
-  CLICOLOR_FORCE=1 "$@" 2>&1 | pad_left | pad_to_pane_height \
+  CLICOLOR_FORCE=1 "$@" 2>&1 | linkify | pad_left | pad_to_pane_height \
     | less -R "${lesskey_args[@]}" "${PAGER_PROMPT_ARGS[@]}"
 }
 

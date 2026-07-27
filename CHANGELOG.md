@@ -2,6 +2,15 @@
 
 ## Unreleased
 
+- Paths and URLs in a preview are Ctrl+clickable. The pager now wraps every
+  path/URL-shaped span in the same OSC-8 sentinel the hint overlay uses, so
+  a click routes through the `virtual-token` handler and opens that object.
+  Unlike the linkify pane removed in 0.4.0, this classifies nothing: it
+  matches on shape, never touches the filesystem, and leaves resolution to
+  the click path (which already resolves and already reports a miss), so a
+  whole document is linked in one pass with no forks. `QUICKLOOK_LINKIFY=0`
+  renders without links.
+
 - Markdown previews use the pane's real width again. Every caller measured
   with `tput cols` from inside a command substitution, where stdout is a
   pipe, so tput answered with the terminfo default 80: prose re-wrapped into
