@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+- The pager footer advertises the stack: "q quit · , back · o viewer · ...",
+  so popping back after a push is discoverable instead of folklore. On a
+  depth-1 preview `,` is a harmless no-op.
+
 - A pick can no longer type into your chat. Popup-hosted previews used to
   rename the pane UNDERNEATH them (a popup is unlisted, so `pane current`
   resolves to the focused listed pane), leaving agent/chat panes wearing

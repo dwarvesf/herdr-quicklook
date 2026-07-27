@@ -330,10 +330,14 @@ viewer_bin() {
 }
 
 # The keys advertised in the pager's footer. Kept in sync BY HAND with
-# ../lesskey, which is the source of truth for o/e/D; q and / are less's
-# own. Anything listed here must actually be bound there, so a new user
-# reading the footer never presses a key that does nothing.
-QUICKLOOK_KEY_HINT='q quit · o viewer · e edit · D diff · / search · space page'
+# ../lesskey, which is the source of truth for o/e/D and the `,` pop; q and
+# / are less's own. Anything listed here must actually be bound there, so a
+# new user reading the footer never presses a key that does nothing.
+# `, back` sits right after quit because it is the stack's own key: after a
+# push (Ctrl+click or a hint pick), `,` pops to the previous file. On a
+# depth-1 preview it is a harmless no-op (remove-file on the last file
+# leaves less running), so advertising it unconditionally is safe.
+QUICKLOOK_KEY_HINT='q quit · , back · o viewer · e edit · D diff · / search · space page'
 
 # debug_log <tag> <field>... : one line to ~/.config/herdr/quicklook-debug.log
 # when QUICKLOOK_DEBUG_LOG is set, else nothing. The fields carry UNTRUSTED

@@ -71,7 +71,7 @@
 
 # QUICKLOOK_KEY_HINT: the key footer painted along the bottom of the preview
 # pane. Set to an empty string to hide it once the keys are muscle memory.
-#QUICKLOOK_KEY_HINT="q quit · o viewer · e edit · D diff · / search · space page"
+#QUICKLOOK_KEY_HINT="q quit · , back · o viewer · e edit · D diff · / search · space page"
 
 # QUICKLOOK_DEBUG_LOG: append one line per hint pick to
 # ~/.config/herdr/quicklook-debug.log (the computed viewer_ok, plus the
