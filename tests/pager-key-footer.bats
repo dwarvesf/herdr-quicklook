@@ -63,3 +63,14 @@ teardown() {
 @test "the hint carries no % so less prompt escapes cannot fire on it" {
   [[ "$QUICKLOOK_KEY_HINT" != *"%"* ]]
 }
+
+# The pick reminder must be TRUE where shown: in a popup-hosted preview
+# (QUICKLOOK_ANON_PANE=1) the hint action would resolve the pane UNDERNEATH
+# and hint the wrong content, so the reminder is dropped there.
+@test "the footer advertises prefix+v pick only for addressable panes" {
+  run bash -c ". '$LIB'; printf '%s' \"\$QUICKLOOK_KEY_HINT\""
+  [[ "$output" == *"prefix+v pick"* ]]
+  run bash -c "QUICKLOOK_ANON_PANE=1; export QUICKLOOK_ANON_PANE; . '$LIB'; printf '%s' \"\$QUICKLOOK_KEY_HINT\""
+  [[ "$output" != *"prefix+v pick"* ]]
+  [[ "$output" == *"q quit"* ]]
+}

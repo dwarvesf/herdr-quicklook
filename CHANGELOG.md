@@ -2,7 +2,8 @@
 
 ## Unreleased
 
-- The pager footer advertises the stack: "q quit · , back · o viewer · ...",
+- The pager footer advertises the stack and the picker: "q quit · , back ·
+  ... · prefix+v pick",
   so popping back after a push is discoverable instead of folklore. On a
   depth-1 preview `,` is a harmless no-op.
 

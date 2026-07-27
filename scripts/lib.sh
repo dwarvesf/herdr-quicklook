@@ -338,6 +338,15 @@ viewer_bin() {
 # depth-1 preview it is a harmless no-op (remove-file on the last file
 # leaves less running), so advertising it unconditionally is safe.
 QUICKLOOK_KEY_HINT='q quit · , back · o viewer · e edit · D diff · / search · space page'
+# The hint-pick reminder is appended ONLY for addressable panes. In a
+# popup-hosted preview (QUICKLOOK_ANON_PANE=1) the reminder would be a lie:
+# a popup is unlisted, so the hint action's `pane current` resolves to the
+# pane UNDERNEATH and the overlay would hint the wrong content. "prefix+v"
+# is the binding this plugin's own README installs; a user who rebound it
+# can override the whole footer via QUICKLOOK_KEY_HINT in .env (load_config
+# runs after this default and wins).
+[ -z "${QUICKLOOK_ANON_PANE:-}" ] && \
+  QUICKLOOK_KEY_HINT="$QUICKLOOK_KEY_HINT · prefix+v pick"
 
 # debug_log <tag> <field>... : one line to ~/.config/herdr/quicklook-debug.log
 # when QUICKLOOK_DEBUG_LOG is set, else nothing. The fields carry UNTRUSTED
