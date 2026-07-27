@@ -950,8 +950,14 @@ render_command_in_pager() {
   # `printf | less` in a fresh pane, so this is the pane's behaviour, not
   # ours). Padding at END keeps the stream streaming: nothing is buffered,
   # the blank rows are only appended once the real output has ended.
+  # Same line-number opt-in as render_file_backed, so a csv/json/sqlite
+  # preview matches a markdown one. Numbers count the FORMATTER's output
+  # rows (same honest caveat as glow's), and pane_cols has already reserved
+  # the field via line_numbers_on, so nothing wraps.
+  local cmd_number_args=()
+  line_numbers_on && cmd_number_args=(-N)
   CLICOLOR_FORCE=1 "$@" 2>&1 | linkify | pad_left | pad_to_pane_height \
-    | less -R "${lesskey_args[@]}" "${PAGER_PROMPT_ARGS[@]}"
+    | less -R "${cmd_number_args[@]}" "${lesskey_args[@]}" "${PAGER_PROMPT_ARGS[@]}"
 }
 
 # resolve_any_token <raw> -> see the handler-registry contract at the top of

@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+- `QUICKLOOK_LINE_NUMBERS=1` now also numbers the piped previews (csv,
+  json, sqlite, plist, pdf-text, archives, notebooks), not just the
+  file-backed ones, so every pageable format matches. Numbers count the
+  formatter's output rows, the same honest caveat as glow's rendered rows.
+
 - The pager footer advertises the stack and the picker: "q quit · , back ·
   ... · prefix+v pick",
   so popping back after a push is discoverable instead of folklore. On a
