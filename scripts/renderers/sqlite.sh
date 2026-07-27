@@ -30,7 +30,14 @@ match_render_sqlite() {
 # markdown.sh/plist.sh), not a duplicated pager invocation. `line` accepted
 # for signature parity, unused - there is no line to jump to in a schema
 # dump.
+# emit_sqlite: the render-registry TEXT half. Declaring it routes this kind
+# down the FILE-BACKED path (render_any -> render_file_backed -> less on the
+# real file with render-open.sh as LESSOPEN), which is what gives it line
+# numbers, clickable links and the push/pop stack, exactly like markdown.
+emit_sqlite() {
+  sqlite3 -readonly -cmd '.tables' -- "$1" '.schema'
+}
+
 render_sqlite() {
-  local path="$1"
-  render_command_in_pager sqlite3 -readonly -cmd '.tables' -- "$path" '.schema'
+  render_command_in_pager emit_sqlite "$1"
 }

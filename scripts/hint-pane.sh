@@ -24,8 +24,10 @@
 # precedent). Keys AND mouse clicks read from /dev/tty (SGR mouse tracking:
 # plain left-click on a hinted token opens it, no Ctrl needed - inside this
 # overlay we own the TTY, which herdr's own Ctrl+click-only limit does not
-# reach). A pick opens the token in herdr's 90% POPUP surface (open-popup.sh)
-# - the overlay is for choosing, the popup is for reading. Esc/q cancels.
+# reach). A lowercase pick opens the token in an ADDRESSABLE overlay (or,
+# picked from inside a preview, PUSHES onto that preview's stack); UPPERCASE
+# opens a full tab pane. The overlay is for choosing, the spawned pane is
+# for reading. Esc/q cancels.
 set -u
 
 script_dir="$(cd "$(dirname "${BASH_SOURCE[0]:-$0}")" && pwd)"
@@ -79,7 +81,13 @@ MOUSE_ON=$'\033[?1000;1006h'
 # overlay border eats 2 columns) must truncate, not reflow - reflow grows the
 # row count past the pane height, the terminal scrolls, and the next ESC[H
 # paints over a shifted screen (the merged/duplicated-lines corruption).
-HOME=$'\033[H'
+# CUP_HOME, not HOME: naming this paint constant HOME clobbered the
+# EXPORTED real $HOME for this pane process and every child of a pick
+# (open-popup.sh, the spawned preview, record_open). Fallout, all observed:
+# the recents state dir became the literal "<ESC>[H/.local/state" RELATIVE
+# path and materialised inside the repo working tree, and debug_log wrote
+# into the same phantom dir, which made in-pane failures untraceable.
+CUP_HOME=$'\033[H'
 EOD=$'\033[J'
 CLR=$'\033[K'
 CURSOR_HIDE=$'\033[?25l'
@@ -111,7 +119,7 @@ fi
 # so the mode-switch is visible without any header line. No newline after the
 # last row (that alone scrolls a full pane), %s on purpose: snapshot text may
 # contain literal \n / \t sequences that %b would corrupt.
-frame="${CURSOR_HIDE}${WRAP_OFF}${HOME}"
+frame="${CURSOR_HIDE}${WRAP_OFF}${CUP_HOME}"
 i=0
 while [ "$i" -lt "$pad" ]; do
   frame+="$NL"
@@ -260,6 +268,18 @@ if [ "${#extras[@]}" -gt 0 ]; then
   done
 fi
 
+# One unmistakable banner row at the very bottom. The overlay repaints the
+# SAME screen with hint letters over token first-characters, and a sparse
+# pane (a PR view has 2-3 openable tokens) changes only 2-3 characters, so a
+# successful open was reported as "I pressed the key and nothing happened":
+# the plugin log showed two overlays opened and dismissed unseen. The banner
+# is the overlay's own proof of life, and it doubles as the key legend.
+# Appended AFTER the span rows are recorded, so no mouse target shifts.
+if [ "${QUICKLOOK_HINT_BANNER:-1}" != 0 ]; then
+  body+="${NL} ${H_KEY} hint ${RESET} ${#tokens[@]} target(s) · press a highlighted key · Ctrl+click · q cancels${CLR}"
+  screen_rows=$((screen_rows + 1))
+fi
+
 # Re-derive the top pad with the extras rows counted in, floor 0, and shift
 # every stored mouse-target row by it: span rows were computed relative to
 # the content's first row, but SGR click coordinates are pane-absolute.
@@ -275,7 +295,7 @@ if [ "$pad" -gt 0 ]; then
   done
 fi
 
-frame="${HOME}"
+frame="${CUP_HOME}"
 i=0
 while [ "$i" -lt "$pad" ]; do
   frame+="$NL"
@@ -286,7 +306,10 @@ frame+="${body}${EOD}${MOUSE_ON}"
 printf '%s' "$frame"
 
 # open_pick <idx>: route the settled token. A directory goes to the real
-# navigable file-viewer; everything else opens in herdr's 90% POPUP surface
+# navigable file-viewer; everything else goes through open-popup.sh (push
+# into the origin preview for a file, else spawn - addressable overlay by
+# default, tab for the UPPERCASE pick, popup only for the preview-origin
+# non-file fallback)
 # (open-popup.sh spawns it; the popup's preview-pane dispatches file/URL/
 # command itself). The overlay's job ends here.
 open_pick() {
@@ -300,7 +323,11 @@ open_pick() {
     export QUICKLOOK_KEEP_CWD=1
     exec bash "$script_dir/open-in-viewer.sh" "${tokens[$i]}"
   fi
-  QUICKLOOK_PREVIEW_CWD="$PWD" QUICKLOOK_OPEN_PLACEMENT="${QUICKLOOK_OPEN_PLACEMENT:-popup}" \
+  # Placement passes through UNSET when nothing chose one: open-popup.sh owns
+  # the default, and it needs the distinction - a preview-origin fallback must
+  # go to the popup surface, while a pre-filled "overlay" here would read as
+  # an explicit choice and pin the spawn behind the origin preview.
+  QUICKLOOK_PREVIEW_CWD="$PWD" \
     exec bash "$script_dir/open-popup.sh" "${tokens[$i]}"
 }
 
@@ -341,9 +368,13 @@ while IFS= read -rsn1 key <"$tty_in"; do
       ;;
     '') continue ;;
     *)
-      # UPPERCASE hint letter = open in a FULL TAB pane instead of the popup
-      # (Q stays cancel). Lowercase = popup, click = popup.
-      placement=popup
+      # UPPERCASE hint letter = open in a FULL TAB pane (Q stays cancel).
+      # Lowercase and click no longer force the popup: herdr allows ONE
+      # popup at a time, so with the popup forced here every pick died with
+      # "popup already open" whenever any popup existed - including the
+      # hint pane itself when it runs as one. Unset lets open-popup.sh
+      # apply its own default (the addressable overlay).
+      placement=""
       case "$key" in
         [A-Z])
           placement=tab

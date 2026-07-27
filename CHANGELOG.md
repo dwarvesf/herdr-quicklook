@@ -2,6 +2,97 @@
 
 ## Unreleased
 
+- The data formats join the stack. csv, json, sqlite, plist, archives and
+  notebooks now declare an `emit_` half, so they render file-backed like
+  markdown: line numbers, clickable links, and push/pop with `:e` and `,`,
+  including ACROSS formats (a json pushed onto a csv pops back to the csv).
+  pdf stays piped on purpose (its first-page poster is graphical and would
+  be lost); code/text keeps bat's own identity (true source-line numbers).
+
+- `QUICKLOOK_LINE_NUMBERS=1` now also numbers the piped previews (csv,
+  json, sqlite, plist, pdf-text, archives, notebooks), not just the
+  file-backed ones, so every pageable format matches. Numbers count the
+  formatter's output rows, the same honest caveat as glow's rendered rows.
+
+- The pager footer advertises the stack and the picker: "q quit · , back ·
+  ... · prefix+v pick",
+  so popping back after a push is discoverable instead of folklore. On a
+  depth-1 preview `,` is a harmless no-op.
+
+- A pick can no longer type into your chat. Popup-hosted previews used to
+  rename the pane UNDERNEATH them (a popup is unlisted, so `pane current`
+  resolves to the focused listed pane), leaving agent/chat panes wearing
+  stale "Preview:" labels - and the push path, trusting the label, then
+  typed ":e <path>" plus Enter straight into the user's chat box. Two
+  fixes, either sufficient alone: anonymous panes no longer rename anything
+  (`QUICKLOOK_ANON_PANE`), and a push target must now actually be paging -
+  its foreground must include `less` (`pane process-info`), or the pick
+  fails closed and falls back to spawning.
+
+- Hint picks open again. Three stacked defects made a pick die silently:
+  the key loop forced every lowercase pick into the POPUP surface, and herdr
+  allows one popup at a time, so whenever the hint pane itself ran as a
+  popup its own spawn was refused with "popup already open"; the spawn also
+  ran while the closing hint pane still lived, so even an overlay spawn was
+  born UNDER it (first-wins z-order) - and the detached replacement then
+  died to SIGHUP when the pane's pty was torn down. Picks now spawn from a
+  HUP-immune detached process after the hint pane is gone, into the
+  addressable overlay by default (`tab` via uppercase still wins; the
+  preview-origin non-file fallback goes to the popup).
+- `hint-pane` no longer clobbers `$HOME`. A paint constant was literally
+  named HOME (the ESC[H cursor-home sequence), overwriting the exported
+  real one for every child of a pick: the recents log materialised inside
+  the repo working tree under a directory named `ESC[H`, and the debug log
+  wrote into the same phantom path, which made every in-pane failure above
+  untraceable. Renamed, and the pick path now carries a gated execution
+  trace (`QUICKLOOK_DEBUG_LOG=1`) so the next in-pane death is visible.
+
+- The hint picker is visible when summoned from inside a preview. Two
+  overlays in one tab do not stack (herdr keeps the first on top), so the
+  hint overlay opened over a preview overlay was focused yet invisible: the
+  key fired, the pane opened, the buffer painted, and the screen still
+  showed the preview - with the next keypresses going into a pane the user
+  could not see. Over a preview the hint pane now opens as a popup, herdr's
+  top surface. Keyboard picks and plain-click picks are unchanged;
+  herdr-level Ctrl+click resolution is unavailable inside the popup.
+
+- The hint overlay announces itself with a bottom banner ("hint · N
+  target(s) · press a highlighted key · Ctrl+click · q cancels"). The overlay
+  repaints the same screen with hint letters over token first-characters, so
+  on a sparse pane (a PR view has 2-3 openable tokens) a successful open
+  changed 2-3 characters and read as "nothing happened"; the plugin log
+  showed two perfectly good overlays opened and dismissed unseen.
+  `QUICKLOOK_HINT_BANNER=0` hides it.
+
+- A hint pick lands somewhere you can keep working. Picks used to open a 90%
+  popup, and a popup is ANONYMOUS: herdr returns no pane id for it and it
+  never appears in `pane list`. Everything that makes a preview drillable
+  needs that identity, so from inside a picked preview there was no second
+  hint overlay and a further pick could not stack, it just spawned another
+  surface. Picks now open an overlay (`QUICKLOOK_OPEN_PLACEMENT=popup`
+  restores the old behaviour, at the cost of the drill-down loop).
+
+- The hint picker works inside a preview, and a pick now STACKS. Press the
+  hint key over a preview and every openable token in it gets a one-key
+  label, exactly as it does over a terminal pane; choosing one pushes it
+  onto that preview's stack instead of opening a second surface, so the
+  keyboard route and the Ctrl+click route behave identically. `,` or
+  Backspace still pops.
+
+- Ctrl+clicking a path inside a preview now opens it **in the same pane**,
+  stacked. `less`'s own file list is the stack: the click pushes with `:e`,
+  and `,` or Backspace pops back to the file underneath at its remembered
+  scroll position. `q` still closes the pane. Nothing extra runs to make this
+  work, the pane is still exactly one process.
+- Markdown previews are file-backed again, which fixes two things at once:
+  `less` knows the filename, so the footer name and the `o` / `e` / `D`
+  escalations work from a `.md` and not just from code, and there is a file
+  list to stack on. Rendering moved into a `LESSOPEN` preprocessor
+  (`scripts/render-open.sh`) that any renderer can opt into by declaring an
+  `emit_<kind>` half. Kinds that paint the terminal directly (images, gifs,
+  media, office, svg) keep their own renderer and fall back to the raw file
+  if pushed onto the stack.
+
 - Paths and URLs in a preview are Ctrl+clickable. The pager now wraps every
   path/URL-shaped span in the same OSC-8 sentinel the hint overlay uses, so
   a click routes through the `virtual-token` handler and opens that object.

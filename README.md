@@ -139,11 +139,35 @@ valid action id if you'd rather bind that directly instead.
 | `o` (or `v`) | **Escalate**: close the popup and open this file, at the same line, in the herdr-file-viewer pane (when that plugin is installed) |
 | `e` | **Edit**: open this file, at the same line, in `$EDITOR` (config-overridable, default `zed --wait`); the popup resumes when the editor exits |
 | `D` | **Diff** (shift-d): open a nested pager on `git diff` for this file (delta-colored if installed, else git's own color); `q` closes it and resumes the file view. A clean file just prints a no-changes notice. Lowercase `d` stays less's half-page-down scroll |
+| Ctrl+click a path | **Push**: open that file in this same pane, stacked on top of the current one |
+| `,` or `Backspace` | **Pop**: back to the file underneath, at the scroll position you left it |
 | `d` / `u`, `j` / `k`, `Space` / `b`, `g` / `G` | less's own navigation: half-page down/up, line down/up, page forward/back, top/bottom |
 | `/`, `n`, `N` | Search inside the file |
 | arrows / PgUp / PgDn | Scroll |
 
 The popup is sized by herdr; it closes itself after handing a URL to the browser.
+
+### Drilling down without leaving the pane
+
+Paths and URLs in a preview are clickable, and a click opens the target **in
+the same pane** rather than stacking another window on your screen. `less`'s
+own file list is the stack, so this costs no extra process.
+
+The hint picker works inside a preview too: press `prefix+v` and every
+openable token in the preview gets a one-key label, exactly as it does over a
+terminal pane. Picking one pushes it, same as a click. So a drill-down is
+`prefix+v` → letter → `prefix+v` → letter, as deep as you like.
+
+`,` or `Backspace` pops back one level; `q` closes the whole pane from any
+depth. (`q` cannot double as "pop": `less` keeps running when its last file is
+removed, so a single key would strand you at the bottom of the stack.)
+
+A pick opens an **overlay** by default rather than a popup, because a popup is
+anonymous, herdr returns no pane id for one and it never appears in
+`pane list`. Both the second hint overlay and the stack push need to address
+the pane by id, so a popup ends the drill-down. Set
+`QUICKLOOK_OPEN_PLACEMENT=popup` if you would rather have the roomier surface
+and do not need to keep drilling; `tab` gives a persistent pane and keeps both.
 
 ## Recents (`prefix+shift+v`)
 
@@ -195,6 +219,22 @@ QUICKLOOK_AGENT_SUGGESTIONS="notify"
 
 # Hint picker: re-enable bare-word fuzzy filename hints (noisy, off by default)
 #QUICKLOOK_HINT_NAMES=1
+
+# Draw a rule between markdown table rows. glamour draws only the header
+# rule, so multi-line rows otherwise run together. Set 0 for bare tables.
+#QUICKLOOK_TABLE_RULES=1
+
+# Make paths and URLs in a preview Ctrl+clickable. Matches on shape only and
+# never touches the filesystem; resolution happens at click time. Set 0 to
+# render without links.
+#QUICKLOOK_LINKIFY=1
+
+# Line numbers in file-backed previews. The render width reserves the number
+# field so they do not push every line into a wrap. On MARKDOWN these number
+# the rendered rows, not the source lines: glow reflows, so one source line
+# becomes several rows. Code and text previews use bat, whose numbers are
+# true source lines. Off by default.
+#QUICKLOOK_LINE_NUMBERS=1
 # Hint picker: restore the slower fully-verified scan instead of shape-first
 #QUICKLOOK_HINT_VERIFIED=1
 

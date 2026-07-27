@@ -48,19 +48,26 @@ match_render_ipynb() {
 # bash does not propagate PIPESTATUS across a function-call boundary, so a
 # `_helper "$path" >"$tmp"; rc=${PIPESTATUS[0]}` shape would silently read 0
 # every time (verified live; see DECISIONS.md).
-render_ipynb() {
+# emit_ipynb: the render-registry TEXT half. Declaring it routes this kind
+# down the FILE-BACKED path (render_any -> render_file_backed -> less on the
+# real file with render-open.sh as LESSOPEN), which is what gives it line
+# numbers, clickable links and the push/pop stack, exactly like markdown.
+# The notebook converts to markdown first, then reuses emit_markdown, so an
+# ipynb preview inherits everything the markdown one has.
+emit_ipynb() {
   local path="$1" tmp rc
-  tmp="$(mktemp "${TMPDIR:-/tmp}/herdr-quicklook-ipynb.XXXXXX.md" 2>/dev/null)" || {
-    render_fallback "$path"
-    return $?
-  }
+  tmp="$(mktemp "${TMPDIR:-/tmp}/herdr-quicklook-ipynb.XXXXXX.md" 2>/dev/null)" || return 1
   pandoc -f ipynb -t markdown -- "$path" 2>/dev/null | sed -E '/^:::/d' >"$tmp"
   rc=${PIPESTATUS[0]}
   if [ "$rc" -ne 0 ] || [ ! -s "$tmp" ]; then
     printf 'quicklook: pandoc could not convert this notebook\n  path: %s\n' "$path" >"$tmp"
   fi
-  render_markdown "$tmp"
+  emit_markdown "$tmp"
   rc=$?
   rm -f -- "$tmp"
   return $rc
+}
+
+render_ipynb() {
+  render_command_in_pager emit_ipynb "$1"
 }

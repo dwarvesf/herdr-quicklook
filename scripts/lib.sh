@@ -220,8 +220,18 @@ recents_state_file() {
 # requires: state must NEVER land inside a repo, however
 # XDG_STATE_HOME/$HOME ends up set on a given machine.
 recents_path_is_safe() {
-  local d
-  d="$(dirname -- "$1")"
+  local p="$1" d
+  # A RELATIVE state path has to be anchored to the cwd before the walk, or
+  # the loop terminates at "." having never looked at what "." actually is,
+  # and the guard passes a path that sits inside the repo. That is not
+  # hypothetical: a $HOME polluted with terminal escape bytes produced the
+  # relative "<ESC>[H/.local/state/herdr-quicklook/recents", and this guard
+  # waved it straight into the working tree.
+  case "$p" in
+    /*) ;;
+    *) p="$PWD/$p" ;;
+  esac
+  d="$(dirname -- "$p")"
   while [ -n "$d" ] && [ "$d" != "/" ] && [ "$d" != "." ]; do
     [ -e "$d/.git" ] && return 1
     d="$(dirname -- "$d")"
@@ -320,10 +330,23 @@ viewer_bin() {
 }
 
 # The keys advertised in the pager's footer. Kept in sync BY HAND with
-# ../lesskey, which is the source of truth for o/e/D; q and / are less's
-# own. Anything listed here must actually be bound there, so a new user
-# reading the footer never presses a key that does nothing.
-QUICKLOOK_KEY_HINT='q quit · o viewer · e edit · D diff · / search · space page'
+# ../lesskey, which is the source of truth for o/e/D and the `,` pop; q and
+# / are less's own. Anything listed here must actually be bound there, so a
+# new user reading the footer never presses a key that does nothing.
+# `, back` sits right after quit because it is the stack's own key: after a
+# push (Ctrl+click or a hint pick), `,` pops to the previous file. On a
+# depth-1 preview it is a harmless no-op (remove-file on the last file
+# leaves less running), so advertising it unconditionally is safe.
+QUICKLOOK_KEY_HINT='q quit · , back · o viewer · e edit · D diff · / search · space page'
+# The hint-pick reminder is appended ONLY for addressable panes. In a
+# popup-hosted preview (QUICKLOOK_ANON_PANE=1) the reminder would be a lie:
+# a popup is unlisted, so the hint action's `pane current` resolves to the
+# pane UNDERNEATH and the overlay would hint the wrong content. "prefix+v"
+# is the binding this plugin's own README installs; a user who rebound it
+# can override the whole footer via QUICKLOOK_KEY_HINT in .env (load_config
+# runs after this default and wins).
+[ -z "${QUICKLOOK_ANON_PANE:-}" ] && \
+  QUICKLOOK_KEY_HINT="$QUICKLOOK_KEY_HINT · prefix+v pick"
 
 # debug_log <tag> <field>... : one line to ~/.config/herdr/quicklook-debug.log
 # when QUICKLOOK_DEBUG_LOG is set, else nothing. The fields carry UNTRUSTED
@@ -365,6 +388,13 @@ name_pane() {
   # prompt to the width, so a long name can never wrap or shift a jump.
   QUICKLOOK_OBJECT_LABEL="$label"
   export QUICKLOOK_OBJECT_LABEL
+  # An ANONYMOUS pane (popup placement) must not rename anything: a popup is
+  # not listed, so `pane current` returns the focused LISTED pane - the one
+  # UNDERNEATH - and the rename lands on an innocent agent/chat pane. Those
+  # stale "Preview:" labels then poisoned pane_is_preview, and a later file
+  # pick typed ":e <path>" into the user's chat box. The footer label above
+  # still applies; only the rename RPC is skipped.
+  [ -n "${QUICKLOOK_ANON_PANE:-}" ] && return 0
   command -v jq >/dev/null 2>&1 || return 0
   pane="$("$herdr_bin" pane current 2>/dev/null | jq -r '.result.pane.pane_id // empty' 2>/dev/null)"
   [ -n "$pane" ] && "$herdr_bin" pane rename "$pane" "Preview: $label" >/dev/null 2>&1
@@ -421,11 +451,30 @@ _pane_cols() {
 # minus the pad_left gutter , without that subtraction every full-width row
 # overflows by the gutter and less soft-wraps its tail onto the next line.
 # Floors at 80 when the size is unreadable, so a formatter never gets 0.
+# less -N prints its line number in a fixed-width field before the text. The
+# render width has to reserve it: without that the content is already sized to
+# fill the pane exactly, so turning numbers on overflows every single line by
+# the width of the number field and less soft-wraps each one onto a
+# continuation row (which also makes the numbers look duplicated).
+LINE_NUMBER_COLS=8
+
+# line_numbers_on: opt-in via QUICKLOOK_LINE_NUMBERS=1. Off by default for a
+# reason worth knowing: on a FILE-BACKED markdown preview less numbers the
+# lines it is given, which are glow's RENDERED rows, not the source lines -
+# glow reflows, so one source line becomes several rows. The numbers are
+# honest row positions, useful for "look at what is on my screen", but they
+# are NOT source line numbers and cannot be used to jump to one. Code/text
+# previews go through bat, whose --style=numbers ARE true source lines.
+line_numbers_on() {
+  [ "${QUICKLOOK_LINE_NUMBERS:-0}" = 1 ]
+}
+
 pane_cols() {
-  local sz
+  local sz reserve="$PAD_LEFT_COLS"
+  line_numbers_on && reserve=$((reserve + LINE_NUMBER_COLS))
   sz="$(_pane_cols)"
-  [ "$sz" -gt $((PAD_LEFT_COLS + 20)) ] || sz=$((80 + PAD_LEFT_COLS))
-  printf '%s' "$((sz - PAD_LEFT_COLS))"
+  [ "$sz" -gt $((reserve + 20)) ] || sz=$((80 + reserve))
+  printf '%s' "$((sz - reserve))"
 }
 
 # linkify: stdin -> stdout, wrapping every path/URL-shaped span in the
@@ -901,8 +950,17 @@ render_command_in_pager() {
   # `printf | less` in a fresh pane, so this is the pane's behaviour, not
   # ours). Padding at END keeps the stream streaming: nothing is buffered,
   # the blank rows are only appended once the real output has ended.
+  # Same line-number opt-in as render_file_backed, so a csv/json/sqlite
+  # preview matches a markdown one. Numbers count the FORMATTER's output
+  # rows (same honest caveat as glow's), and pane_cols has already reserved
+  # the field via line_numbers_on, so nothing wraps. A STRING flag, not an
+  # array: expanding an EMPTY array under set -u is an unbound-variable
+  # crash on Apple's bash 3.2, which is exactly what pane scripts run when
+  # brew bash is off PATH (caught by the dispatch-modes suite).
+  local numflag=""
+  line_numbers_on && numflag="-N"
   CLICOLOR_FORCE=1 "$@" 2>&1 | linkify | pad_left | pad_to_pane_height \
-    | less -R "${lesskey_args[@]}" "${PAGER_PROMPT_ARGS[@]}"
+    | less -R ${numflag:+"$numflag"} "${lesskey_args[@]}" "${PAGER_PROMPT_ARGS[@]}"
 }
 
 # resolve_any_token <raw> -> see the handler-registry contract at the top of
@@ -977,11 +1035,190 @@ render_any() {
   local path="$1" line="${2:-}" kind
   for kind in "${RENDER_KINDS[@]}"; do
     if "match_render_$kind" "$path"; then
+      # A kind that declares emit_<kind> is FILE-BACKED: less opens the real
+      # file and calls render-open.sh as its LESSOPEN preprocessor, so less
+      # keeps the filename (the footer name and the o/e/D %-expansions all
+      # need it) and owns a file LIST, which is what the push/pop stack is
+      # built on. A kind with no emit_ (image, media, office, svg, gif -
+      # they paint the terminal directly and block on a key) keeps its own
+      # renderer and is simply not a stack participant.
+      if declare -f "emit_$kind" >/dev/null 2>&1; then
+        render_file_backed "$path" "$line"
+        return $?
+      fi
       "render_$kind" "$path" "$line"
       return $?
     fi
   done
   return 1
+}
+
+# push_into_preview <pane-id> <token>: if <pane-id> is a quicklook preview
+# pane already paging a file, PUSH <token> onto that pane's stack instead of
+# opening another surface, and return 0. Returns 1 when the caller should
+# fall back to spawning (not a preview pane, no pane id, no jq, or a token
+# that is not a local file - a URL belongs in the browser and a SHA in
+# `git show`, neither of which `:e` can page).
+#
+# `:e <path>` appends to less's file list and jumps to it, so the pane's own
+# file list IS the stack; `,` / Backspace (remove-file) pops back. Driving
+# another pane's keys this way is the mechanism open-in-viewer.sh already
+# uses on the file-viewer pane. Both the Ctrl+click path (open-link.sh) and
+# the hint-pick path (open-popup.sh) route through here, so a drill-down
+# stacks the same way whichever one you used.
+# strip_pager_footer: stdin -> stdout, dropping the LAST non-blank row.
+#
+# In a preview pane that row is less's bottom prompt - our key-hint footer
+# ("doc.md · q quit · o viewer · ...") - which is chrome, not document
+# content. The hint scanner cannot tell the difference, so it was handing out
+# hint letters for the footer's own text: the object name became a target,
+# and the `/` in "/ search" became a target that opens the FILESYSTEM ROOT in
+# the file viewer. Two wasted letters, one of them a trap.
+#
+# Keyed on position rather than on the hint text because the footer is
+# truncated to the pane width, so matching QUICKLOOK_KEY_HINT would miss
+# whenever it is clipped. less always paints its prompt on the bottom row, so
+# with an empty QUICKLOOK_KEY_HINT this still correctly drops the bare `:`
+# prompt.
+strip_pager_footer() {
+  awk '
+    { ln[NR] = $0; if ($0 ~ /[^[:space:]]/) last = NR }
+    END { for (i = 1; i <= NR; i++) if (i != last) print ln[i] }
+  '
+}
+
+# pane_is_preview <pane-id>: rc 0 iff that pane is a quicklook preview, and
+# echoes its cwd. QUERY-CLASS RPC (`pane list`), so it is safe ONLY from an
+# action context; calling it from inside an overlay pane risks the same
+# deadlock `pane read` hits (see hint.sh). That is why the hint flow asks
+# this question in hint.sh, the action, and passes the ANSWER down to the
+# overlay rather than letting the overlay ask.
+pane_is_preview() {
+  local pane="$1" row label fg
+  [ -n "$pane" ] || return 1
+  command -v jq >/dev/null 2>&1 || return 1
+  row="$("$herdr_bin" pane list 2>/dev/null \
+    | jq -r --arg p "$pane" '.result.panes[] | select(.pane_id==$p) | "\(.label // "")\t\(.cwd // "")"' 2>/dev/null | head -1)"
+  [ -n "$row" ] || return 1
+  label="${row%%$'\t'*}"
+  case "$label" in
+    Preview*) ;;
+    *) return 1 ;;
+  esac
+  # The label alone is NOT sufficient, and this is a safety property, not
+  # tidiness: a popup-hosted preview's name_pane used to rename whichever
+  # LISTED pane was focused (a popup is not listed, so `pane current`
+  # returned the pane underneath), which left agent/chat panes wearing
+  # stale "Preview:" labels. Trusting one of those made a file pick TYPE
+  # ":e <path>" plus Enter straight into the user's chat box. So a preview
+  # must also actually be paging: fail CLOSED unless the pane's foreground
+  # includes less (the caller then falls back to spawning, which is
+  # harmless in every case).
+  fg="$("$herdr_bin" pane process-info --pane "$pane" 2>/dev/null \
+    | jq -r '[.result.process_info.foreground_processes[]?.name] | join(",")' 2>/dev/null)"
+  case ",$fg," in
+    *,less,*) printf '%s' "${row#*$'\t'}"; return 0 ;;
+  esac
+  return 1
+}
+
+# push_resolved_into_pane <pane-id> <token> [cwd]: PUSH <token> onto that
+# pane's stack. Write-only (`send-text` / `send-keys`), no query RPC, so this
+# is safe from inside an overlay pane too - the same class of call
+# escalate.sh and open-in-viewer.sh already make.
+#
+# `:e <path>` appends to less's file list and jumps to it, so the pane's own
+# file list IS the stack and `,` / Backspace (remove-file) pops back. rc 1
+# means "not pushable, spawn instead": a URL belongs in the browser and a SHA
+# in `git show`, neither of which `:e` can page.
+push_resolved_into_pane() {
+  local pane="$1" token="$2" pcwd="${3:-}"
+  [ -n "$pane" ] && [ -n "$token" ] || return 1
+  if [ -n "$pcwd" ] && [ -d "$pcwd" ]; then cd "$pcwd" 2>/dev/null || true; fi
+  resolve_any_token "$token" || return 1
+  [ "${RESOLVED_MODE:-}" = file ] && [ -n "${RESOLVED_TARGET:-}" ] || return 1
+
+  "$herdr_bin" pane send-text "$pane" ":e $RESOLVED_TARGET" >/dev/null 2>&1
+  "$herdr_bin" pane send-keys "$pane" Enter >/dev/null 2>&1
+  if [ -n "${RESOLVED_LINE:-}" ]; then
+    "$herdr_bin" pane send-text "$pane" "${RESOLVED_LINE}g" >/dev/null 2>&1
+  fi
+  return 0
+}
+
+# push_into_preview <pane-id> <token>: the ACTION-context convenience, both
+# halves together. Never call this from inside an overlay pane.
+push_into_preview() {
+  local pane="$1" token="$2" pcwd
+  pcwd="$(pane_is_preview "$pane")" || return 1
+  push_resolved_into_pane "$pane" "$token" "$pcwd"
+}
+
+# emit_supported <path>: does the kind claiming <path> have an emit_ half?
+# Asked BEFORE the emit pipeline runs, because pad_to_pane_height would
+# happily emit blank padding for a kind that produced nothing, and less reads
+# any output at all as "the preprocessor handled it" - so an image pushed
+# onto the stack with `:e` would render as a screen of blanks instead of
+# falling back to the raw file. Checking first keeps the pipeline STREAMING;
+# buffering emit_any's output to test it for emptiness would hold a whole
+# rendered file in memory.
+emit_supported() {
+  local path="$1" kind
+  for kind in "${RENDER_KINDS[@]}"; do
+    if "match_render_$kind" "$path"; then
+      declare -f "emit_$kind" >/dev/null 2>&1
+      return $?
+    fi
+  done
+  return 1
+}
+
+# emit_any <path>: the render-registry's TEXT half - write the rendered form
+# of <path> to stdout and page nothing. Used by scripts/render-open.sh (the
+# LESSOPEN preprocessor). Returns 1 when no kind claims the path or the
+# claiming kind has no emit_ half, which is LESSOPEN's "no output" contract:
+# less then falls back to showing the file raw.
+emit_any() {
+  local path="$1" kind
+  for kind in "${RENDER_KINDS[@]}"; do
+    if "match_render_$kind" "$path"; then
+      declare -f "emit_$kind" >/dev/null 2>&1 || return 1
+      "emit_$kind" "$path"
+      return $?
+    fi
+  done
+  return 1
+}
+
+# render_file_backed <target> [line]: exec less ON THE REAL FILE, with
+# render-open.sh as the input preprocessor. One copy of the lesskey / VISUAL
+# / prompt wiring that text.sh used to own alone.
+#
+# The preprocessor also does the gutter and the pane-height pad, so there is
+# no longer a short-file special case that pipes (and thereby loses the
+# filename): every file-backed preview, short or long, is stack-capable.
+render_file_backed() {
+  local target="$1" line="${2:-}"
+  local lesskey_args=()
+  [ -f "$LIB_DIR/../lesskey" ] && lesskey_args=(--lesskey-src="$LIB_DIR/../lesskey")
+  pager_prompt_args
+
+  export VISUAL="$LIB_DIR/escalate.sh"
+  export QUICKLOOK_EDITOR_SCRIPT="$LIB_DIR/escalate-editor.sh"
+  # A command STRING less hands to a shell, so the inner quotes are literal
+  # and an array cannot be used here (same SC2089/SC2090 case text.sh had).
+  # shellcheck disable=SC2089
+  LESSOPEN="|$LIB_DIR/render-open.sh %s"
+  # shellcheck disable=SC2090
+  export LESSOPEN
+  # String flag, not an array: an EMPTY array expansion under set -u is an
+  # unbound-variable crash on Apple's bash 3.2 (same landmine as the pager
+  # twin above). pane_cols has already reserved LINE_NUMBER_COLS, so the
+  # numbered content still fits the pane instead of wrapping every line.
+  local numflag=""
+  line_numbers_on && numflag="-N"
+  # shellcheck disable=SC2086
+  exec less -R "${lesskey_args[@]}" ${numflag:+"$numflag"} "${PAGER_PROMPT_ARGS[@]}" ${line:++$line} "$target"
 }
 
 # render_hint_for_ext <ext> -> prints the recommended external tool for a

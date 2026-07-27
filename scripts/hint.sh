@@ -36,6 +36,21 @@ if [ -z "$origin_pane" ] && [ -n "$ctx" ] && command -v jq >/dev/null 2>&1; then
   origin_pane="$(printf '%s' "$ctx" | jq -r '.focused_pane_id // empty' 2>/dev/null || true)"
 fi
 
+# Is the hint being taken over a PREVIEW pane? If so a pick should push onto
+# that preview's stack instead of spawning another surface. The question is
+# asked HERE, in the action, because it needs a query-class RPC (`pane list`)
+# and those are unsafe from inside the overlay pane that will act on the
+# answer - so the overlay is handed the answer, not the question.
+origin_preview=""
+origin_cwd=""
+if [ -n "$origin_pane" ]; then
+  if origin_cwd="$(pane_is_preview "$origin_pane")"; then
+    origin_preview=1
+  else
+    origin_cwd=""
+  fi
+fi
+
 repo=""
 if [ -n "$ctx" ] && command -v jq >/dev/null 2>&1; then
   repo="$(printf '%s' "$ctx" | jq -r '.focused_pane_cwd // .workspace_cwd // empty' 2>/dev/null || true)"
@@ -55,6 +70,19 @@ if [ -n "$origin_pane" ]; then
   "$herdr_bin" pane read "$origin_pane" --source "${QUICKLOOK_PICK_SOURCE:-visible}" --format text 2>/dev/null >"$raw_file"
 fi
 _pick_strip_ansi <"$raw_file" >"$snap_file"
+
+# Over a PREVIEW, the bottom row is less's prompt (our key-hint footer), not
+# document content, and the scanner cannot tell. It was handing out letters
+# for the footer's own text - the object name, and the `/` in "/ search",
+# which opens the FILESYSTEM ROOT in the file viewer. Strip it from the SCAN
+# only: the snapshot above keeps the footer so the overlay still looks like
+# the pane, and dropping just the last row leaves every preceding line number
+# unchanged, so the overlay's in-place hint positioning still lines up.
+scan_file="$raw_file"
+if [ -n "$origin_preview" ]; then
+  scan_file="$(mktemp "${TMPDIR:-/tmp}/quicklook-hint-scan.XXXXXX")"
+  strip_pager_footer <"$raw_file" >"$scan_file"
+fi
 
 # Clipboard-first, IMMEDIATE: the user who just selected+copied the exact
 # token ON SCREEN wants it open, not a picker. Gated on the text actually
@@ -109,10 +137,11 @@ fi
       printf '%s\t%s\t%s\t%-5s %s\n' "$raw" "$line_no" "$(quicklook_link_uri "$raw" || true)" "$kind" "$raw"
       n=$((n + 1))
       [ "$n" -ge "${#QUICKLOOK_HINT_KEYS}" ] && break
-    done < <(pick_scan_text <"$raw_file")
+    done < <(pick_scan_text <"$scan_file")
   } >"$tokens_file.part"
   mv -f "$tokens_file.part" "$tokens_file"
   rm -f "$raw_file" 2>/dev/null
+  [ "$scan_file" = "$raw_file" ] || rm -f "$scan_file" 2>/dev/null
 ) &
 
 # Answer the viewer gate HERE, in the action's own context, and hand the
@@ -128,18 +157,41 @@ viewer_ok=0
 # knowing which branch a pick took.
 debug_log "hint: viewer_ok=$viewer_ok herdr_bin=$herdr_bin"
 
+# Placement: overlay normally, POPUP when the origin is itself a preview
+# overlay. Two overlays in one tab do NOT stack: herdr keeps the first on
+# top, so a hint overlay opened over a preview overlay is focused but
+# INVISIBLE - the user's presses fired (plugin log, exit 0, pane opened,
+# focused:true), the buffer painted correctly, and the screen showed only
+# the preview; their next keys then went into a pane they could not see. A
+# popup is herdr's transient top surface and renders above overlays.
+#
+# Cost, per the overlay-vs-popup note in DESIGN.md: popup mouse input is
+# forwarded raw to the process, so herdr-level OSC-8 Ctrl+click resolution
+# is lost inside it. hint-pane's own SGR click tracking still works, and
+# the keyboard path is untouched, which is the primary pick path anyway.
+hint_placement=overlay
+[ -n "$origin_preview" ] && hint_placement=popup
+
 set -- plugin pane open \
   --plugin herdr-quicklook \
   --entrypoint hint-pane \
-  --placement overlay \
+  --placement "$hint_placement" \
   --focus \
   --env "QUICKLOOK_VIEWER_OK=$viewer_ok" \
   --env "QUICKLOOK_DEBUG_LOG=${QUICKLOOK_DEBUG_LOG:-}" \
   --env "QUICKLOOK_HINT_TOKENS_FILE=$tokens_file" \
-  --env "QUICKLOOK_HINT_SNAP_FILE=$snap_file"
+  --env "QUICKLOOK_HINT_SNAP_FILE=$snap_file" \
+  --env "QUICKLOOK_ORIGIN_PANE=$origin_pane" \
+  --env "QUICKLOOK_ORIGIN_PREVIEW=$origin_preview" \
+  --env "QUICKLOOK_ORIGIN_CWD=$origin_cwd"
 
 if [ -n "$repo" ] && [ -d "$repo" ]; then
   set -- "$@" --env "QUICKLOOK_HINT_CWD=$repo"
 fi
+
+# Near-full size so the popup's tty geometry stays close to the origin's:
+# the snapshot was captured at the origin's width, and a much narrower
+# popup would soft-wrap long rows and shift the mouse-click row mapping.
+[ "$hint_placement" = popup ] && set -- "$@" --width 100% --height 100%
 
 exec "$herdr_bin" "$@"

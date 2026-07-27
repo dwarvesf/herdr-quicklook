@@ -30,7 +30,14 @@ match_render_plist() {
 # shared `render_command_in_pager` helper (same shape as markdown.sh/
 # sqlite.sh), not a duplicated pager invocation. `line` accepted for
 # signature parity, unused - there is no line to jump to in a plist dump.
+# emit_plist: the render-registry TEXT half. Declaring it routes this kind
+# down the FILE-BACKED path (render_any -> render_file_backed -> less on the
+# real file with render-open.sh as LESSOPEN), which is what gives it line
+# numbers, clickable links and the push/pop stack, exactly like markdown.
+emit_plist() {
+  plutil -p -- "$1"
+}
+
 render_plist() {
-  local path="$1"
-  render_command_in_pager plutil -p -- "$path"
+  render_command_in_pager emit_plist "$1"
 }

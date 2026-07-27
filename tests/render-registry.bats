@@ -144,3 +144,14 @@ teardown() {
   local expected="markdown image gif svg pdf archive csv json ipynb office media sqlite plist text fallback"
   [ "${RENDER_KINDS[*]}" = "$expected" ]
 }
+
+# The file-backed roster after the emit_ conversion sweep: every pageable
+# data kind routes through render_file_backed (numbers + links + the stack),
+# while pdf keeps its poster half and text keeps bat's own identity.
+@test "emit_ conversion roster: data kinds are file-backed, pdf and text are not" {
+  for k in markdown csv json sqlite plist archive ipynb; do
+    declare -f "emit_$k" >/dev/null || { echo "missing emit_$k"; return 1; }
+  done
+  ! declare -f emit_pdf >/dev/null
+  ! declare -f emit_text >/dev/null
+}

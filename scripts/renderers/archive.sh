@@ -52,11 +52,19 @@ match_render_archive() {
 # `resolve()` in lib.sh only ever hands renderers an ABSOLUTE path, so a
 # bare `tar -tf <path>` is never at risk of the path being misread as a
 # flag.
-render_archive() {
+# emit_archive: the render-registry TEXT half. Declaring it routes this kind
+# down the FILE-BACKED path (render_any -> render_file_backed -> less on the
+# real file with render-open.sh as LESSOPEN), which is what gives it line
+# numbers, clickable links and the push/pop stack, exactly like markdown.
+emit_archive() {
   local path="$1" ext
   ext="$(_archive_kind "$path")"
   case "$ext" in
-    zip | jar) render_command_in_pager unzip -l -- "$path" ;;
-    tar | tgz) render_command_in_pager tar -tf "$path" ;;
+    zip | jar) unzip -l -- "$path" ;;
+    tar | tgz) tar -tf "$path" ;;
   esac
+}
+
+render_archive() {
+  render_command_in_pager emit_archive "$1"
 }

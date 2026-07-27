@@ -131,17 +131,17 @@ teardown() {
   [ "$output" = "FALLBACK:$FIX/fake.ipynb" ]
 }
 
-# ---- render: real conversion reuses render_markdown ----
+# ---- emit: real conversion reuses emit_markdown (the file-backed half) ----
 
-@test "render_ipynb: converts cells to markdown and dispatches through render_markdown" {
+@test "emit_ipynb: converts cells to markdown and dispatches through emit_markdown" {
   export PATH="$STUB:$PATH"
   run bash -c "
     . '$LIB'
-    render_markdown() { printf 'MARKDOWN-RENDERED:%s\n' \"\$(cat \"\$1\")\"; return 0; }
-    render_ipynb '$FIX/t.ipynb'
+    emit_markdown() { printf 'MARKDOWN-EMITTED:%s\n' \"\$(cat \"\$1\")\"; return 0; }
+    emit_ipynb '$FIX/t.ipynb'
   "
   [ "$status" -eq 0 ]
-  [[ "$output" == *"MARKDOWN-RENDERED:"* ]]
+  [[ "$output" == *"MARKDOWN-EMITTED:"* ]]
   [[ "$output" == *"# Title"* ]]
   [[ "$output" == *"print('hello')"* ]]
   # pandoc's own div-fence wrapper must be stripped before glow ever sees it.

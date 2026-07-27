@@ -103,12 +103,23 @@ _md_glow() {
   _md_table_spacers <"$target" | glow -s "$style" -w "$cols" - | _md_table_rules
 }
 
+# emit_markdown <path>: the render-registry TEXT half - glow's rendered
+# output on stdout, no pager. Declaring it is what routes markdown down the
+# file-backed path in render_any, so less opens the real .md and keeps its
+# filename (the o / e / D escalations and the footer name need it) and its
+# file list (the push/pop stack).
+#
+# glow's stdout is a PIPE here, so its auto width is a hard 80 no matter how
+# wide the pane is; source lines wider than 80 double-wrap into ragged
+# fragments and tables get squeezed into 80 columns of a much wider pane.
+# pane_cols (lib.sh) reads the true width off /dev/tty and already subtracts
+# the pad_left gutter.
+emit_markdown() {
+  _md_glow "$1" "$(pane_cols)"
+}
+
+# Kept as the pager-driving entry point for any caller that still wants one;
+# render_any now prefers emit_markdown + render_file_backed.
 render_markdown() {
-  local target="$1"
-  # glow's stdout is a PIPE inside render_command_in_pager, so its auto
-  # width is a hard 80 no matter how wide the pane is; source lines wider
-  # than 80 then double-wrap into ragged orphan fragments, and tables get
-  # squeezed into 80 columns of a much wider pane. pane_cols (lib.sh) reads
-  # the true width off /dev/tty and already subtracts the pad_left gutter.
-  render_command_in_pager _md_glow "$target" "$(pane_cols)"
+  render_command_in_pager emit_markdown "$1"
 }

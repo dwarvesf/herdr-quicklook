@@ -71,7 +71,7 @@
 
 # QUICKLOOK_KEY_HINT: the key footer painted along the bottom of the preview
 # pane. Set to an empty string to hide it once the keys are muscle memory.
-#QUICKLOOK_KEY_HINT="q quit · o viewer · e edit · D diff · / search · space page"
+#QUICKLOOK_KEY_HINT="q quit · , back · o viewer · e edit · D diff · / search · space page"
 
 # QUICKLOOK_DEBUG_LOG: append one line per hint pick to
 # ~/.config/herdr/quicklook-debug.log (the computed viewer_ok, plus the
@@ -81,3 +81,26 @@
 # The log is append-only with no rotation, so turn it back off once the
 # question is answered.
 #QUICKLOOK_DEBUG_LOG=1
+
+# QUICKLOOK_LINE_NUMBERS: show line numbers in file-backed previews (less -N).
+# The render width reserves the number field, so numbers do not push every
+# line into a wrap. NOTE on markdown: less numbers the RENDERED rows glow
+# produced, not the source lines (glow reflows, so one source line becomes
+# several rows). Code/text previews use bat, whose numbers are true source
+# lines. Off by default.
+#QUICKLOOK_LINE_NUMBERS=1
+
+# QUICKLOOK_OPEN_PLACEMENT: the surface a hint pick opens in.
+# "overlay" (default) or "tab" both give the pane an id and a label, which is
+# what lets you keep drilling: `hint` can target the pane for a SECOND
+# overlay, and a further pick stacks onto it. "popup" is roomier but
+# ANONYMOUS, herdr returns no pane id for it and it never appears in
+# `pane list`, so a pick lands somewhere nothing can address and the
+# drill-down stops there.
+#QUICKLOOK_OPEN_PLACEMENT=overlay
+
+# QUICKLOOK_HINT_BANNER: the "hint · N target(s) · ..." row painted along the
+# bottom of the hint overlay. On a sparse pane the overlay differs from the
+# pane under it by only 2-3 highlighted characters, so without the banner a
+# successful open can be invisible. Set 0 to hide it.
+#QUICKLOOK_HINT_BANNER=1

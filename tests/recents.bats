@@ -145,6 +145,24 @@ teardown() {
   [ "$status" -eq 1 ]
 }
 
+# Both cases above are ABSOLUTE, which is how the relative hole survived: for
+# a relative path the ancestor walk stopped at "." having never looked at what
+# "." was, so the guard waved a path straight into the working tree. Real
+# fallout, not hypothetical - a $HOME polluted with terminal escape bytes made
+# recents_state_dir return a relative path and left an ESC-named directory
+# holding .local/state/herdr-quicklook/recents inside this very repo.
+@test "recents_path_is_safe: a RELATIVE path is anchored to the cwd, not waved through" {
+  cd "$FIX/repo"
+  run recents_path_is_safe ".state/herdr-quicklook/recents"
+  [ "$status" -eq 1 ]
+}
+
+@test "recents_path_is_safe: a relative path outside any repo is still safe" {
+  cd "$FIX/state"
+  run recents_path_is_safe "herdr-quicklook/recents"
+  [ "$status" -eq 0 ]
+}
+
 @test "record_open: refuses to write when XDG_STATE_HOME resolves inside a repo (the guard fires end to end)" {
   XDG_STATE_HOME="$FIX/repo/.state"
   record_open "a.md"

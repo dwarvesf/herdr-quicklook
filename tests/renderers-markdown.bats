@@ -212,15 +212,45 @@ SH
 
 # ---- render_any dispatch: glow-present renders, glow-absent degrades ----
 
-@test "render_any: glow present - a .md file dispatches to the markdown renderer" {
+# Markdown now declares an emit_ half, so render_any routes it down the
+# FILE-BACKED path: less opens the real .md with render-open.sh as its
+# LESSOPEN preprocessor. That is what keeps the filename (the footer name and
+# the o/e/D %-expansions need it) and gives less a file list to stack on.
+@test "render_any: glow present - a .md file dispatches to the file-backed path" {
   stub_with_glow
   run bash -c "
     . '$LIB'
-    render_markdown() { printf 'MARKDOWN-RENDERED:%s\n' \"\$1\"; return 0; }
+    render_file_backed() { printf 'FILE-BACKED:%s\n' \"\$1\"; return 0; }
     render_any '$FIX/doc.md'
   "
   [ "$status" -eq 0 ]
-  [ "$output" = "MARKDOWN-RENDERED:$FIX/doc.md" ]
+  [ "$output" = "FILE-BACKED:$FIX/doc.md" ]
+}
+
+@test "render_any: a kind with no emit_ half keeps its own renderer" {
+  stub_with_glow
+  run bash -c "
+    . '$LIB'
+    render_file_backed() { printf 'FILE-BACKED:%s\n' \"\$1\"; return 0; }
+    render_text() { printf 'TEXT-RENDERED:%s\n' \"\$1\"; return 0; }
+    render_any '$FIX/doc.txt'
+  "
+  [ "$status" -eq 0 ]
+  [ "$output" = "TEXT-RENDERED:$FIX/doc.txt" ]
+}
+
+@test "emit_supported: true for markdown, false for a kind with no emit_ half" {
+  stub_with_glow
+  emit_supported "$FIX/doc.md"
+  ! emit_supported "$FIX/doc.txt"
+}
+
+@test "emit_markdown: writes rendered text to stdout and pages nothing" {
+  stub_with_glow
+  run emit_markdown "$FIX/doc.md"
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"GLOW_ARGS:"* ]]
+  [[ "$output" != *"LESS_ARGS:"* ]]
 }
 
 @test "render_any: glow absent - a .md file falls through to the text renderer, not fallback" {

@@ -33,3 +33,17 @@
 o visual
 e pshell \020"$QUICKLOOK_EDITOR_SCRIPT" ?lm+%lm. %g\n
 D shell \020"$(dirname "$QUICKLOOK_EDITOR_SCRIPT")/dirty-diff.sh" %\n
+
+# Stack pop. `,` and Backspace remove the current file from less's file list,
+# which is the preview stack: `:e <path>` (sent by open-link on a Ctrl+click)
+# pushes, remove-file pops back to the file underneath, with less's own
+# per-file scroll position restored.
+#
+# `q` is deliberately NOT the pop key. The intent was one key that pops when
+# deep and closes at the bottom, but a pty probe shows `:d` on the LAST
+# remaining file leaves less running (controls: plain `q` exits, no keypress
+# does not), so binding q to remove-file would strand the user on a page they
+# could not dismiss. lesskey cannot branch and all three shell-out slots
+# (o/e/D) are taken, so q keeps its plain meaning: close the pane.
+, remove-file
+\b remove-file

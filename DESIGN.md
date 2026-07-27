@@ -158,7 +158,42 @@ render_<kind> <path> [line]      # DRIVES the pane (it owns the real TTY).
                                   # optional [line] is the RESOLVED_LINE jump
                                   # target; only text/markdown/pdf-text
                                   # consume it.
+emit_<kind> <path>               # OPTIONAL third function: the TEXT half.
+                                  # Writes the rendered form to stdout and
+                                  # pages nothing. Declaring it opts the kind
+                                  # into the file-backed path below.
 ```
+
+### File-backed kinds (and why the stack needs them)
+
+A kind that declares `emit_<kind>` is rendered **file-backed**: `render_any`
+calls `render_file_backed`, which `exec`s `less` on the REAL file with
+`scripts/render-open.sh` as its `LESSOPEN` input preprocessor. The
+preprocessor runs `emit_any` and then `linkify`, `pad_left` and
+`pad_to_pane_height`, so the gutter and the pane-height pad no longer force a
+pipe.
+
+Three things depend on `less` knowing the filename, and a pipe has none of
+them:
+
+- the pager footer names the object,
+- the `o` / `e` / `D` escalations expand `%`-codes against the current file,
+- `less` owns a file **list**, which IS the preview stack: `:e <path>` pushes
+  (sent by `open-link` on a Ctrl+click), `remove-file` pops back, and `less`
+  restores its own per-file scroll position.
+
+The stack therefore costs no extra process. The rejected alternative wrapped
+the pane in a supervising loop that re-invoked the renderer after each `less`
+exit, which meant a second `bash` idling in `wait()` for the pane's whole life
+plus a state file and a `send-keys q` race.
+
+A kind with NO `emit_` half keeps its own `render_<kind>` and is simply not a
+stack participant. That is the right answer for the graphical kinds (`image`,
+`gif`, `media`, `office`, `svg`), which paint the terminal directly and block
+on a keypress, so they cannot be preprocessed at all. `render-open.sh` guards
+this with `emit_supported`: producing NO output is `LESSOPEN`'s contract for
+"show the file raw", which is what a `.png` pushed onto the stack falls back
+to.
 
 `render_any <path> [line]` (in `scripts/lib.sh`) walks `RENDER_KINDS` in
 order and dispatches to the FIRST `match_render_<kind>` that accepts the
@@ -249,10 +284,19 @@ The narrower `git-host-token` handler routes only URL shapes quicklook improves
 (blob/raw files and pull requests) to the existing `preview` action. Handler
 order is significant: the internal sentinel handler stays first.
 
-`hint-pane` must remain an `overlay`, not a popup. Herdr overlays are normal
-terminal panes whose OSC-8 cells participate in Ctrl-click resolution; popup
-mouse input is forwarded directly to the popup process before link handling.
-The shared scanner remains compatible with macOS system Bash 3.2.
+`hint-pane` opens as an `overlay` normally, and as a `popup` when the origin
+is itself a preview overlay. The overlay default is what keeps OSC-8
+Ctrl-click resolution: herdr overlays are normal terminal panes whose OSC-8
+cells participate in link handling, while popup mouse input is forwarded
+directly to the popup process before it. But two overlays in one tab do NOT
+stack - herdr keeps the first on top - so a hint overlay opened over a
+preview overlay is focused yet invisible: the press fires, the pane opens,
+the buffer paints, and the screen still shows the preview, with the user's
+next keys going into a pane they cannot see (observed live via the plugin
+log). A popup is herdr's transient top surface and renders above overlays;
+inside it, hint-pane's own SGR click tracking and the keyboard path still
+work, only herdr-level Ctrl+click resolution is lost. The shared scanner
+remains compatible with macOS system Bash 3.2.
 
 ## The lesskey three-slot map
 
@@ -281,9 +325,30 @@ only lets one script own `visual`. `o` claimed it first (escalating to
 herdr-file-viewer needs the file+line `%f`/`%lm` expansion that `visual`
 gives for free); `e` and `d` each needed their own independent shell-escape,
 so they moved to `pshell` and `shell` respectively, the only two other
-slots `less` has. **A fourth in-popup key would have nowhere left to bind**
-without inventing a dispatcher script that reads a flag file, or similar;
-that has not been needed yet.
+slots `less` has. **A fourth in-popup key that must SHELL OUT would have
+nowhere left to bind** without inventing a dispatcher script that reads a
+flag file, or similar; that has not been needed yet.
+
+The budget only binds keys that shell out. Keys mapped to `less`'s own
+built-in actions are unlimited, which is how the stack pop is bound:
+
+```
+┌─────┬──────────────┬──────────────────────────────────────────────┐
+│ Key │ less action   │ Effect                                        │
+├─────┼──────────────┼──────────────────────────────────────────────┤
+│ ,   │ remove-file   │ pop: drop the current file from less's file    │
+│ BS  │ remove-file   │ list, revealing the one underneath at its own  │
+│     │               │ remembered scroll position                    │
+└─────┴──────────────┴──────────────────────────────────────────────┘
+```
+
+`q` is deliberately NOT the pop key. The intent was one key that pops when
+the stack is deep and closes at the bottom, but a pty probe shows `:d` on the
+LAST remaining file leaves `less` running (controls: plain `q` exits, no
+keypress does not). Binding `q` to `remove-file` would therefore strand the
+user on a page they could not dismiss, and neither `lesskey` (no branching)
+nor a shell slot (all three taken) can make the choice. So `q` keeps its
+plain meaning: close the pane.
 
 The two shell-escape slots (`pshell`/`shell`) use **different** `%`-expansion
 syntax: `pshell` uses the two-char prompt-style codes (`%g`, `%lm`, …, the
