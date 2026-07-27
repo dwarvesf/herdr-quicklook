@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+## 0.7.0 (2026-07-27)
+
 - The data formats join the stack. csv, json, sqlite, plist, archives and
   notebooks now declare an `emit_` half, so they render file-backed like
   markdown: line numbers, clickable links, and push/pop with `:e` and `,`,
