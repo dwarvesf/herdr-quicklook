@@ -29,12 +29,20 @@ match_render_csv() {
 # own default is comma); `.csv` uses qsv's default. `line` is accepted for
 # render_<kind> signature parity but unused - an aligned table has no line
 # to jump to.
-render_csv() {
+# emit_csv: the render-registry TEXT half. Declaring it routes this kind
+# down the FILE-BACKED path (render_any -> render_file_backed -> less on the
+# real file with render-open.sh as LESSOPEN), which is what gives it line
+# numbers, clickable links and the push/pop stack, exactly like markdown.
+emit_csv() {
   local path="$1" ext
   ext="$(printf '%s' "${path##*.}" | tr '[:upper:]' '[:lower:]')"
   if [ "$ext" = "tsv" ]; then
-    render_command_in_pager qsv table -d "$(printf '\t')" -- "$path"
+    qsv table -d "$(printf '\t')" -- "$path"
   else
-    render_command_in_pager qsv table -- "$path"
+    qsv table -- "$path"
   fi
+}
+
+render_csv() {
+  render_command_in_pager emit_csv "$1"
 }

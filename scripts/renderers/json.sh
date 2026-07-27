@@ -27,9 +27,15 @@ match_render_json() {
 # malformed-json file that still passed the mime-encoding check (it is
 # still text) makes `jq .` print its own parse error to the pager instead
 # of a render - an honest degrade, not a crash.
+# emit_json: the render-registry TEXT half. Declaring it routes this kind
+# down the FILE-BACKED path (render_any -> render_file_backed -> less on the
+# real file with render-open.sh as LESSOPEN), which is what gives it line
+# numbers, clickable links and the push/pop stack, exactly like markdown.
+# -C: jq drops color when piped; force it, less -R renders it.
+emit_json() {
+  jq -C . -- "$1"
+}
+
 render_json() {
-  local path="$1"
-  # -C: jq drops color when piped (the pager pipeline); force it, less -R
-  # already renders it.
-  render_command_in_pager jq -C . -- "$path"
+  render_command_in_pager emit_json "$1"
 }

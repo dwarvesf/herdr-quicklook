@@ -953,11 +953,14 @@ render_command_in_pager() {
   # Same line-number opt-in as render_file_backed, so a csv/json/sqlite
   # preview matches a markdown one. Numbers count the FORMATTER's output
   # rows (same honest caveat as glow's), and pane_cols has already reserved
-  # the field via line_numbers_on, so nothing wraps.
-  local cmd_number_args=()
-  line_numbers_on && cmd_number_args=(-N)
+  # the field via line_numbers_on, so nothing wraps. A STRING flag, not an
+  # array: expanding an EMPTY array under set -u is an unbound-variable
+  # crash on Apple's bash 3.2, which is exactly what pane scripts run when
+  # brew bash is off PATH (caught by the dispatch-modes suite).
+  local numflag=""
+  line_numbers_on && numflag="-N"
   CLICOLOR_FORCE=1 "$@" 2>&1 | linkify | pad_left | pad_to_pane_height \
-    | less -R "${cmd_number_args[@]}" "${lesskey_args[@]}" "${PAGER_PROMPT_ARGS[@]}"
+    | less -R ${numflag:+"$numflag"} "${lesskey_args[@]}" "${PAGER_PROMPT_ARGS[@]}"
 }
 
 # resolve_any_token <raw> -> see the handler-registry contract at the top of
@@ -1208,12 +1211,14 @@ render_file_backed() {
   LESSOPEN="|$LIB_DIR/render-open.sh %s"
   # shellcheck disable=SC2090
   export LESSOPEN
-  local number_args=()
-  # pane_cols has already reserved LINE_NUMBER_COLS, so the numbered content
-  # still fits the pane instead of wrapping every line.
-  line_numbers_on && number_args=(-N)
+  # String flag, not an array: an EMPTY array expansion under set -u is an
+  # unbound-variable crash on Apple's bash 3.2 (same landmine as the pager
+  # twin above). pane_cols has already reserved LINE_NUMBER_COLS, so the
+  # numbered content still fits the pane instead of wrapping every line.
+  local numflag=""
+  line_numbers_on && numflag="-N"
   # shellcheck disable=SC2086
-  exec less -R "${lesskey_args[@]}" "${number_args[@]}" "${PAGER_PROMPT_ARGS[@]}" ${line:++$line} "$target"
+  exec less -R "${lesskey_args[@]}" ${numflag:+"$numflag"} "${PAGER_PROMPT_ARGS[@]}" ${line:++$line} "$target"
 }
 
 # render_hint_for_ext <ext> -> prints the recommended external tool for a

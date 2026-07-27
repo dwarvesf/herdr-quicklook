@@ -2,6 +2,13 @@
 
 ## Unreleased
 
+- The data formats join the stack. csv, json, sqlite, plist, archives and
+  notebooks now declare an `emit_` half, so they render file-backed like
+  markdown: line numbers, clickable links, and push/pop with `:e` and `,`,
+  including ACROSS formats (a json pushed onto a csv pops back to the csv).
+  pdf stays piped on purpose (its first-page poster is graphical and would
+  be lost); code/text keeps bat's own identity (true source-line numbers).
+
 - `QUICKLOOK_LINE_NUMBERS=1` now also numbers the piped previews (csv,
   json, sqlite, plist, pdf-text, archives, notebooks), not just the
   file-backed ones, so every pageable format matches. Numbers count the
