@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Preview `lesskey`: gate the `e`/`pshell` binding with `#version >= 632`. Stock less 590 (Ubuntu/Mint) has no `pshell` and used to reject the whole lesskey ("Press RETURN"); older less now loads `o`/`D`/quit cleanly, and newer less keeps `e` → `$EDITOR`.
+
 ## 0.7.0 (2026-07-27)
 
 - The data formats join the stack. csv, json, sqlite, plist, archives and
