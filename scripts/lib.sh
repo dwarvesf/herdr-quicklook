@@ -883,6 +883,19 @@ resolve() {
       done
       ;;
   esac
+  # Agents and OSC-8 / file:// paste often leave %XX escapes in an otherwise
+  # absolute filesystem path (Tray%20status….md). GitHub blob paths already
+  # decode in map_*_url; bare paths need the same chance here.
+  case "$p" in
+    *%*)
+      local decoded
+      decoded="$(urldecode "$p")"
+      if [ -n "$decoded" ] && [ "$decoded" != "$p" ]; then
+        resolve "$decoded"
+        return $?
+      fi
+      ;;
+  esac
   return 1
 }
 
@@ -1496,6 +1509,16 @@ _pick_resolve_local() {
       done
       ;;
   esac
+  case "$p" in
+    *%*)
+      local decoded
+      decoded="$(urldecode "$p")"
+      if [ -n "$decoded" ] && [ "$decoded" != "$p" ]; then
+        _pick_resolve_local "$decoded"
+        return $?
+      fi
+      ;;
+  esac
   return 1
 }
 
@@ -1741,6 +1764,153 @@ _pick_classify_span() {
   esac
 }
 
+
+# ---- spaced-path rejoin (pick_scan_text Pass 1b) ----------------------------
+# Pass 1 awk whitespace-splits, so `/path/Tray status icon.plan.md` becomes
+# three spans. When a path-shaped prefix can grow into a real file by joining
+# the next words with spaces, emit the joined token instead. Stop when:
+#   - we already have a file match and the longer string is not a file, or
+#   - current basename already looks like name.ext and the next word has no
+#     '.' (trailing prose after an extension: `….plan.md please`), or
+#   - the partial is no longer under an existing directory.
+# %XX in a single span is handled by resolve/_pick_resolve_local decode; this
+# join only repairs whitespace splits.
+
+_pick_fs_is_file() {
+  local p="$1" d
+  case "$p" in
+    '~/'*) p="$HOME/${p#~/}" ;;
+  esac
+  [ -f "$p" ] && return 0
+  [ -f "$PWD/$p" ] && return 0
+  case "$1" in
+    *%*)
+      d="$(urldecode "$1")"
+      if [ -n "$d" ] && [ "$d" != "$1" ]; then
+        case "$d" in
+          '~/'*) d="$HOME/${d#~/}" ;;
+        esac
+        [ -f "$d" ] && return 0
+        [ -f "$PWD/$d" ] && return 0
+      fi
+      ;;
+  esac
+  return 1
+}
+
+_pick_plausible_partial_path() {
+  local p="$1" d parent
+  case "$p" in
+    *%*)
+      d="$(urldecode "$p")"
+      [ -n "$d" ] && [ "$d" != "$p" ] && p="$d"
+      ;;
+  esac
+  case "$p" in
+    '~/'*) p="$HOME/${p#~/}" ;;
+  esac
+  [ -d "$p" ] && return 0
+  [ -d "$PWD/$p" ] && return 0
+  parent="${p%/*}"
+  if [ -n "$parent" ] && [ "$parent" != "$p" ]; then
+    [ -d "$parent" ] && return 0
+    [ -d "$PWD/$parent" ] && return 0
+  fi
+  return 1
+}
+
+_pick_path_shaped_for_join() {
+  # shellcheck disable=SC2088
+  case "$1" in
+    '~/'* | ./* | ../* | /* | */*) return 0 ;;
+    *) return 1 ;;
+  esac
+}
+
+_pick_basename_has_ext() {
+  local base="${1##*/}"
+  case "$base" in
+    *.*) return 0 ;;
+    *) return 1 ;;
+  esac
+}
+
+# stdin: ordered <line>\t<token> rows from awk (NOT yet deduped).
+# stdout: unique <line>\t<token> after spaced rejoin (bottom-most line wins).
+_pick_rejoin_spaced_paths() {
+  local ln tok cur=""
+  local -a spans=()
+  local out=""
+
+  _pick_flush_line_spans() {
+    local n=${#spans[@]} i=0
+    [ "$n" -eq 0 ] && return 0
+    while [ "$i" -lt "$n" ]; do
+      local s="${spans[$i]}"
+      if ! _pick_path_shaped_for_join "$s"; then
+        out+="$cur"$'\t'"$s"$'\n'
+        i=$((i + 1))
+        continue
+      fi
+      local cand="$s" best="" best_j=$i j=$i
+      while [ "$j" -lt "$n" ]; do
+        if _pick_fs_is_file "$cand"; then
+          best="$cand"
+          best_j=$j
+        elif [ -n "$best" ]; then
+          break
+        elif ! _pick_plausible_partial_path "$cand"; then
+          break
+        fi
+        j=$((j + 1))
+        [ "$j" -ge "$n" ] && break
+        local next="${spans[$j]}"
+        case "$next" in
+          http://* | https://* | \#*) break ;;
+        esac
+        # Extension stop: `….plan.md please` — do not glue prose.
+        if _pick_basename_has_ext "$cand"; then
+          case "$next" in
+            *.*) ;;
+            *) break ;;
+          esac
+        fi
+        cand="$cand $next"
+      done
+      if [ -n "$best" ]; then
+        out+="$cur"$'\t'"$best"$'\n'
+        i=$((best_j + 1))
+      else
+        out+="$cur"$'\t'"$s"$'\n'
+        i=$((i + 1))
+      fi
+    done
+  }
+
+  while IFS=$'\t' read -r ln tok || [ -n "${ln:-}" ]; do
+    [ -z "${tok:-}" ] && [ -z "${ln:-}" ] && continue
+    if [ -z "$cur" ]; then
+      cur="$ln"
+      spans=("$tok")
+      continue
+    fi
+    if [ "$ln" = "$cur" ]; then
+      spans+=("$tok")
+    else
+      _pick_flush_line_spans
+      cur="$ln"
+      spans=("$tok")
+    fi
+  done
+  [ -n "$cur" ] && _pick_flush_line_spans
+
+  # Dedup: bottom-most line wins (same as the former awk seen[] pass).
+  printf '%s' "$out" | awk -F'\t' -v OFS=$'\t' '
+    NF >= 2 { seen[$2] = $1 }
+    END { for (t in seen) print seen[t], t }
+  '
+}
+
 # pick_scan_text -> see the contract comment above. Pure and
 # side-effect-free beyond the read-only filesystem lookups the handler
 # registry already does; no clipboard read, no pane read, no fzf, no
@@ -1870,14 +2040,17 @@ pick_scan_text() {
         if (spans[i] == "") continue
         t = trim(spans[i])
         if (t == "") continue
-        seen[t] = line_no
+        # Ordered emission (no dedup here): Pass 1b rejoins spaced paths
+        # using neighboring spans on the same line, then dedups.
+        print line_no, t
       }
-    }
-    END {
-      for (tok in seen) print seen[tok], tok
     }
   ')"
 
+  [ -z "$dedup" ] && return 0
+
+  # Pass 1b: rejoin whitespace-split path spans when a real file matches.
+  dedup="$(_pick_rejoin_spaced_paths <<<"$dedup")"
   [ -z "$dedup" ] && return 0
 
   # Hoist repo state ONCE for the whole scan, not once per span (see the
