@@ -241,3 +241,29 @@ teardown() {
   [ "$rc" -eq 0 ]
   [ "$RESOLVED_MODE" = "browser" ]
 }
+
+# ---- urldecode bare filesystem paths (%20 etc.) ----
+
+@test "resolve: percent-encoded spaces decode to an existing file" {
+  mkdir -p "$FIX/repo/docs"
+  printf 'ok\n' >"$FIX/repo/docs/my file.md"
+  run resolve "$FIX/repo/docs/my%20file.md"
+  [ "$status" -eq 0 ]
+  [ "$output" = "$FIX/repo/docs/my file.md" ]
+}
+
+@test "resolve: path with real spaces still works" {
+  mkdir -p "$FIX/repo/docs"
+  printf 'ok\n' >"$FIX/repo/docs/my file.md"
+  run resolve "$FIX/repo/docs/my file.md"
+  [ "$status" -eq 0 ]
+  [ "$output" = "$FIX/repo/docs/my file.md" ]
+}
+
+@test "resolve_any_token: percent-encoded absolute path opens as file" {
+  mkdir -p "$FIX/repo/docs"
+  printf 'ok\n' >"$FIX/repo/docs/my file.md"
+  resolve_any_token "$FIX/repo/docs/my%20file.md"
+  [ "$RESOLVED_MODE" = "file" ]
+  [ "$RESOLVED_TARGET" = "$FIX/repo/docs/my file.md" ]
+}

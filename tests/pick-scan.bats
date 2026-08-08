@@ -664,3 +664,45 @@ SCRIPT
   run bash -c ". '$LIB'; printf 'a\nb\n' | pad_left"
   [ "$output" = "$(printf '  a\n  b')" ]
 }
+
+# ---- spaced path tokens (whitespace-joined when a real file matches) ----
+
+@test "pick_scan_text: absolute path with spaces rejoins to one path token" {
+  mkdir -p "$FIX/spaced"
+  printf 'plan\n' >"$FIX/spaced/Tray status icon.plan.md"
+  run pick_scan_text <<<"open $FIX/spaced/Tray status icon.plan.md please"
+  [ "$status" -eq 0 ]
+  [ "$output" = "$(printf '%s\tpath\t1' "$FIX/spaced/Tray status icon.plan.md")" ]
+}
+
+@test "pick_scan_text: relative path with spaces rejoins under \$PWD" {
+  mkdir -p "$FIX/repo/docs"
+  printf 'ok\n' >"$FIX/repo/docs/my file.md"
+  git -C "$FIX/repo" add -A
+  git -C "$FIX/repo" -c user.email=t@t -c user.name=t commit -qm spaced
+  run pick_scan_text <<<'see docs/my file.md next'
+  [ "$status" -eq 0 ]
+  [ "$output" = "$(printf 'docs/my file.md\tpath\t1')" ]
+}
+
+@test "pick_scan_text: trailing prose after an extension is not glued onto a spaced path" {
+  mkdir -p "$FIX/spaced"
+  printf 'plan\n' >"$FIX/spaced/Tray status icon.plan.md"
+  run pick_scan_text <<<"$FIX/spaced/Tray status icon.plan.md please read this"
+  [ "$status" -eq 0 ]
+  [[ "$output" == *$'\tpath\t'* ]]
+  [[ "$output" != *"please"* ]]
+  [[ "$output" == *"$FIX/spaced/Tray status icon.plan.md"* ]]
+}
+
+@test "pick_scan_text: percent-encoded spaces in an absolute path resolve via decode" {
+  mkdir -p "$FIX/spaced"
+  printf 'plan\n' >"$FIX/spaced/Tray status icon.plan.md"
+  # single whitespace-free token (as agents sometimes print); classify after resolve/decode
+  run pick_scan_text <<<"open $FIX/spaced/Tray%20status%20icon.plan.md now"
+  [ "$status" -eq 0 ]
+  # On-screen token keeps %20 (so the hint can still match screen text); kind is path
+  # because resolve/decode finds the file during classify.
+  [[ "$output" == *"$FIX/spaced/Tray%20status%20icon.plan.md"$'\tpath\t'* ]] || \
+    [[ "$output" == *"$FIX/spaced/Tray status icon.plan.md"$'\tpath\t'* ]]
+}
