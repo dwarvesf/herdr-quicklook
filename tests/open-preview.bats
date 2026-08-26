@@ -15,6 +15,10 @@ SH
   chmod +x "$STUB/herdr"
   PATH="$STUB:$PATH"
   export PATH
+  # Pin the herdr binary to the stub. HERDR_BIN_PATH can leak in exported
+  # from the shell (e.g. /opt/homebrew/bin/herdr), which would bypass the
+  # PATH stub and exec the real herdr instead of the argv-echoing one.
+  export HERDR_BIN_PATH="$STUB/herdr"
   # no herdr context; the script falls back cleanly
   unset HERDR_PLUGIN_CONTEXT_JSON HERDR_WORKSPACE_CWD HERDR_PLUGIN_CLICKED_URL
 }

@@ -6,6 +6,11 @@
 
 setup() {
   LIB="$BATS_TEST_DIRNAME/../scripts/lib.sh"
+  # herdr_bin binds to HERDR_BIN_PATH at source time; a leaking exported
+  # value (e.g. /opt/homebrew/bin/herdr) makes viewer_root reach the REAL
+  # herdr-file-viewer plugin and its palette, instead of the "no viewer
+  # installed" default these tests assert as `-s auto`.
+  unset HERDR_BIN_PATH
   # shellcheck disable=SC1090
   . "$LIB"
 

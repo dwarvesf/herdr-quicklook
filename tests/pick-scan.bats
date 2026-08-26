@@ -7,6 +7,10 @@
 
 setup() {
   LIB="$BATS_TEST_DIRNAME/../scripts/lib.sh"
+  # herdr_bin binds to HERDR_BIN_PATH at source time; a leaking exported
+  # value (e.g. /opt/homebrew/bin/herdr) would make pick_acquire exec the
+  # real herdr instead of the stub the PATH trick targets.
+  unset HERDR_BIN_PATH
   # shellcheck disable=SC1090
   . "$LIB"
 
