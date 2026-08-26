@@ -977,10 +977,31 @@ render_command_in_pager() {
 # dispatch, so the expanded path flows through the ordinary file/dir
 # handlers (a truncated DIRECTORY still opens in the viewer).
 expand_elided() {
-  local t="$1" prefix
+  local t="$1" prefix m=()
   case "$t" in
-    *'…' | *...) ;;
-    *) printf '%s' "$t"; return 0 ;;
+    *'…' | *...) ;;   # explicit ellipsis marker -> existing elision path below
+    *)
+      # No marker. A terminal clips a long path at the pane's right edge
+      # (autowrap off), so the LAST path segment arrives truncated and the
+      # literal token names nothing. Its parent directory still exists, so a
+      # UNIQUE prefix-complete under it is the path the display meant. Parse
+      # only path-shaped tokens (>1 segment) and only when the literal token
+      # does not already exist, so a bare-name miss, a URL, or a VCS token is
+      # never completed.
+      case "$t" in
+        */*)
+          if [ ! -e "$t" ]; then
+            m=("$t"*)
+            if [ "${#m[@]}" -eq 1 ] && [ -e "${m[0]}" ]; then
+              printf '%s' "${m[0]}"
+              return 0
+            fi
+          fi
+          ;;
+      esac
+      printf '%s' "$t"
+      return 0
+      ;;
   esac
   prefix="${t%'…'}"
   prefix="${prefix%...}"
@@ -989,9 +1010,6 @@ expand_elided() {
     *) printf '%s' "$t"; return 0 ;;
   esac
   [ -n "$prefix" ] || { printf '%s' "$t"; return 0; }
-  local m=()
-  # nullglob is off here on purpose: an unmatched pattern stays literal and
-  # the -e test below rejects it.
   m=("$prefix"*)
   if [ "${#m[@]}" -eq 1 ] && [ -e "${m[0]}" ]; then
     printf '%s' "${m[0]}"
