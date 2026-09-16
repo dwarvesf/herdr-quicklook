@@ -31,7 +31,12 @@
 #command
 \e\e quit
 o visual
-e pshell \020"$QUICKLOOK_EDITOR_SCRIPT" ?lm+%lm. %g\n
+# `pshell` (less's `#` prompt-shell) exists from less ~632. Ubuntu/Mint still
+# ship less 590, which rejects unknown actions and then refuses the WHOLE
+# lesskey (preview pauses on "Press RETURN"). `#version` was added in 594 and
+# is ignored entirely on older less, so wrapping the binding keeps `e` on
+# modern less while stock 590 loads o/D/quit with no error.
+#version >= 632  e pshell \020"$QUICKLOOK_EDITOR_SCRIPT" ?lm+%lm. %g\n
 D shell \020"$(dirname "$QUICKLOOK_EDITOR_SCRIPT")/dirty-diff.sh" %\n
 
 # Stack pop. `,` and Backspace remove the current file from less's file list,

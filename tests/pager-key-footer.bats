@@ -38,8 +38,10 @@ teardown() {
 
 @test "the footer never advertises a key that is not bound" {
   # o / e / D come from ../lesskey; q and / are less's own built-ins.
+  # `e` is gated with `#version >= 632` so stock less 590 can load the file
+  # (pshell does not exist there); on modern less the binding is active.
   grep -qE '^o visual' "$LESSKEY"
-  grep -qE '^e pshell' "$LESSKEY"
+  grep -qE '^(#version >= 632[[:space:]]+)?e pshell' "$LESSKEY"
   grep -qE '^D shell' "$LESSKEY"
   for k in o e D; do
     [[ "$QUICKLOOK_KEY_HINT" == *"$k "* ]]
