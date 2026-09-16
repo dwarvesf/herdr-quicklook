@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Hint scan rejoins whitespace-split path spans when they form a real file (e.g. `…/Tray status icon.plan.md`), and stops before trailing prose after an extension (`….plan.md please`). Bare filesystem paths containing `%XX` (e.g. `Tray%20status….md`) now decode the same way GitHub blob paths already did.
+
 ## 0.7.0 (2026-07-27)
 
 - The data formats join the stack. csv, json, sqlite, plist, archives and
