@@ -90,12 +90,17 @@ fi
 # its std fds are detached from the pane's pty so the pane can actually
 # close, and by the time it spawns the hint pane is gone. The retry absorbs
 # the window where herdr has not yet reaped the closing popup.
+#
+# Ignore SIGHUP or the detachment is fiction: the pane's pty is torn down
+# the moment the parent exits, the kernel HUPs what is left of the
+# session, and the subshell died in its sleep - observed as "trace shows
+# exit 0, no spawn, no debug line". Set it HERE, before the fork, so the
+# subshell is born ignoring HUP: set inside the subshell it races the
+# parent's `exit 0`, and on macOS bash 3.2 the HUP (herdr sends it ~2ms
+# after the pane exits) won every time - the subshell died before its
+# first line ran.
+trap '' HUP
 (
-  # Ignore SIGHUP or the detachment is fiction: the pane's pty is torn down
-  # the moment the parent exits, the kernel HUPs what is left of the
-  # session, and the subshell died in its sleep - observed as "trace shows
-  # exit 0, no spawn, no debug line".
-  trap '' HUP
   sleep 0.25
   tries=0
   while :; do
