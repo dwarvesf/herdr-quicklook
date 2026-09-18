@@ -2,6 +2,32 @@
 
 ## Unreleased
 
+- Four fixes for stock macOS, where `/bin/bash` is 3.2 and `herdr` behaves
+  slightly differently than the design assumed. Together they were the
+  difference between "the hint overlay is empty and picks do nothing" and a
+  working picker.
+
+- The hint overlay no longer reports "scan timed out" on an ordinary screen.
+  bash 3.2 takes whole-second `read -t` values only and fails a fractional one
+  instantly, so the ~5s wait for the scan really lasted ~0.3s while a normal
+  scan takes ~2s. The same peek made every mouse report read as a bare Esc, so
+  a click closed the overlay.
+
+- A click on a hint lands on the token again when the body is taller than the
+  pane. Writing the last line scrolls the terminal, so each hint sits N rows
+  above the row recorded for hit-testing; the stored targets now move with it.
+
+- A pick opens its preview again. The detached spawn set its HUP trap inside
+  the subshell, which races the parent's exit; herdr HUPs the session ~2ms
+  later and won every time on bash 3.2, so the pick closed the overlay and
+  nothing opened. The trap is now set before the fork.
+
+- `o` escalates to the file viewer at the right file again. The poll used
+  `pane current`, which resolves the CALLING pane, and this runs inside the
+  preview pane - so it never saw the viewer and gave up while the viewer sat
+  on its tree. It now finds the pane by its `Files` label within the
+  workspace.
+
 ## 0.7.0 (2026-07-27)
 
 - The data formats join the stack. csv, json, sqlite, plist, archives and

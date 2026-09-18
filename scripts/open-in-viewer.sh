@@ -153,19 +153,24 @@ fi
 
 # The viewer opens in its OWN TAB (open-file-viewer-tab switches to an
 # existing viewer tab instead of opening twice): a vertical split would
-# disrupt the origin tab's layout. After the action, focus lands on the
-# viewer pane; poll `pane current` until its label reads "Files".
+# disrupt the origin tab's layout. Then find that pane by its "Files" label,
+# scoped to this workspace (the viewer launcher is workspace-scoped too).
+#
+# NOT via `pane current`: that resolves the CALLING pane, not the focused one
+# (verified - it honours $HERDR_PANE_ID), and this script runs inside the
+# preview pane as less's shell escape. So the poll kept reading back
+# "Preview: <file>", never saw "Files", and gave up after 3s with "file
+# viewer did not open" while the viewer sat there showing its tree.
 "$herdr_bin" plugin action invoke open-file-viewer-tab --plugin herdr-file-viewer >/dev/null 2>&1 \
   || { notify "herdr-file-viewer is not installed"; exit 1; }
 pid=""
 for _ in $(seq 1 20); do
-  pid="$("$herdr_bin" pane current 2>/dev/null | jq -r '.result.pane.pane_id // empty' 2>/dev/null)"
-  if [ -n "$pid" ]; then
-    label="$("$herdr_bin" pane list 2>/dev/null \
-      | jq -r --arg id "$pid" '.result.panes[] | select(.pane_id == $id) | .label // empty' 2>/dev/null)"
-    [ "$label" = "Files" ] && break
-  fi
-  pid=""
+  pid="$("$herdr_bin" pane list 2>/dev/null | jq -r --arg ws "${HERDR_WORKSPACE_ID:-}" '
+    [.result.panes[]
+     | select(.label == "Files")
+     | select($ws == "" or .workspace_id == $ws)]
+    | last | .pane_id // empty' 2>/dev/null)"
+  [ -n "$pid" ] && break
   sleep 0.15
 done
 [ -z "$pid" ] && { notify "file viewer did not open"; exit 1; }

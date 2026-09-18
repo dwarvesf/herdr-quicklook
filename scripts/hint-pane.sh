@@ -134,11 +134,20 @@ done
 frame+="$EOD"
 printf '%s' "$frame"
 
+# macOS ships /bin/bash 3.2, whose `read -t` takes whole seconds only: a
+# fractional timeout fails instantly ("invalid timeout specification"). That
+# made the ~5s scan wait below last ~0.3s - a real scan takes ~2s, so the
+# overlay said "scan timed out" - and made every mouse click read as a bare Esc.
+frac_read_timeout=1
+[ "${BASH_VERSINFO[0]}" -ge 4 ] || frac_read_timeout=""
+
 # Wait for the background scan (existence of tokens_file = done), polling the
 # tty so Esc/q aborts mid-scan. Cap ~5s.
 waited=0
 while [ ! -f "${tokens_file:-/nonexistent}" ]; do
-  if read -t 0.1 -rsn1 key <"$tty_in" 2>/dev/null; then
+  if [ -z "$frac_read_timeout" ]; then
+    sleep 0.1 # keys typed meanwhile stay buffered for the pick loop below
+  elif read -t 0.1 -rsn1 key <"$tty_in" 2>/dev/null; then
     case "$key" in $'\e' | q | Q) cleanup; exit 0 ;; esac
   fi
   waited=$((waited + 1))
@@ -295,6 +304,25 @@ if [ "$pad" -gt 0 ]; then
   done
 fi
 
+# The mirror case, and the reason every click missed: when the body is TALLER
+# than the pane (a full-height snapshot plus the banner, or any extras row),
+# writing its last line scrolls the terminal, so everything lands `overflow`
+# rows HIGHER than it was computed while the stored targets still point at the
+# pre-scroll rows. Measured in a 49-row pane: a hint on body row 16 was clicked
+# at screen row 15 (49 snapshot rows + banner = 1 row of scroll), and with one
+# extras row too the miss grew to 2. Rows that scrolled off the top go to 0, so
+# hit_test can never match them. Columns are unaffected: scrolling moves rows.
+overflow=0
+if [ "$rows" -gt 0 ] && [ "$screen_rows" -gt "$rows" ]; then
+  overflow=$((screen_rows - rows))
+  i=0
+  while [ "$i" -lt "${#span_row[@]}" ]; do
+    span_row[i]=$((span_row[i] - overflow))
+    [ "${span_row[$i]}" -lt 0 ] && span_row[i]=0
+    i=$((i + 1))
+  done
+fi
+
 frame="${CUP_HOME}"
 i=0
 while [ "$i" -lt "$pad" ]; do
@@ -349,13 +377,16 @@ while IFS= read -rsn1 key <"$tty_in"; do
     q | Q) cleanup; exit 0 ;;
     $'\e')
       # Either a bare Esc (cancel) or the start of an SGR mouse report
-      # (ESC [ < b ; x ; y M/m). Peek with a short timeout.
-      if ! IFS= read -rsn1 -t 0.05 c1 <"$tty_in" 2>/dev/null; then cleanup; exit 0; fi
+      # (ESC [ < b ; x ; y M/m). Peek with a short timeout (1s on bash 3.2,
+      # which only a bare Esc waits out: a report's bytes arrive together).
+      peek_t=0.05
+      [ -n "$frac_read_timeout" ] || peek_t=1
+      if ! IFS= read -rsn1 -t "$peek_t" c1 <"$tty_in" 2>/dev/null; then cleanup; exit 0; fi
       [ "$c1" = "[" ] || { cleanup; exit 0; }
-      IFS= read -rsn1 -t 0.05 c2 <"$tty_in" 2>/dev/null || continue
+      IFS= read -rsn1 -t "$peek_t" c2 <"$tty_in" 2>/dev/null || continue
       if [ "$c2" = "<" ]; then
         seq=""
-        while IFS= read -rsn1 -t 0.05 ch <"$tty_in" 2>/dev/null; do
+        while IFS= read -rsn1 -t "$peek_t" ch <"$tty_in" 2>/dev/null; do
           case "$ch" in M | m) break ;; *) seq+="$ch" ;; esac
         done
         # press events only; left button = 0
