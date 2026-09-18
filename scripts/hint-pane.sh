@@ -304,6 +304,25 @@ if [ "$pad" -gt 0 ]; then
   done
 fi
 
+# The mirror case, and the reason every click missed: when the body is TALLER
+# than the pane (a full-height snapshot plus the banner, or any extras row),
+# writing its last line scrolls the terminal, so everything lands `overflow`
+# rows HIGHER than it was computed while the stored targets still point at the
+# pre-scroll rows. Measured in a 49-row pane: a hint on body row 16 was clicked
+# at screen row 15 (49 snapshot rows + banner = 1 row of scroll), and with one
+# extras row too the miss grew to 2. Rows that scrolled off the top go to 0, so
+# hit_test can never match them. Columns are unaffected: scrolling moves rows.
+overflow=0
+if [ "$rows" -gt 0 ] && [ "$screen_rows" -gt "$rows" ]; then
+  overflow=$((screen_rows - rows))
+  i=0
+  while [ "$i" -lt "${#span_row[@]}" ]; do
+    span_row[i]=$((span_row[i] - overflow))
+    [ "${span_row[$i]}" -lt 0 ] && span_row[i]=0
+    i=$((i + 1))
+  done
+fi
+
 frame="${CUP_HOME}"
 i=0
 while [ "$i" -lt "$pad" ]; do
