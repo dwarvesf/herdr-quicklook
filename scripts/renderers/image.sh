@@ -40,9 +40,19 @@ _image_terminal_supports_kitty() {
   [ "${TERM:-}" = "xterm-kitty" ]
 }
 
+# _image_terminal_is_herdr: herdr panes set TERM_PROGRAM=herdr and keep a
+# generic TERM (xterm-256color), so chafa's auto-detect falls back to symbols
+# there. herdr itself renders Kitty graphics from its panes to a Kitty
+# graphics-capable outer terminal (its `kitty_graphics` option, on by
+# default), so the format is forced to kitty instead of auto-detected.
+_image_terminal_is_herdr() {
+  [ "${TERM_PROGRAM:-}" = "herdr" ]
+}
+
 # render_image <path> [line]: base path is an explicit `chafa --format
 # symbols` (works in ANY terminal); the kitty-capable branch omits --format
-# so chafa's own probe/auto-detect can pick kitty-graphics passthrough.
+# so chafa's own probe/auto-detect can pick kitty-graphics passthrough, and
+# the herdr branch passes `--format kitty` explicitly.
 # `line` is accepted for render_<kind> signature parity (render_any always
 # passes it) but unused - an inline image render has no line to jump to.
 # Pauses after drawing (read/keypress) so the overlay does not instantly
@@ -51,7 +61,9 @@ _image_terminal_supports_kitty() {
 # to; documented as a scope edge in the goal file, not a bug.
 render_image() {
   local path="$1"
-  if _image_terminal_supports_kitty; then
+  if _image_terminal_is_herdr; then
+    chafa --format kitty -- "$path" 2>/dev/null
+  elif _image_terminal_supports_kitty; then
     chafa -- "$path" 2>/dev/null
   else
     chafa --format symbols -- "$path" 2>/dev/null

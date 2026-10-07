@@ -96,7 +96,7 @@ teardown() {
 
 @test "render_image: base path calls chafa with the file and an explicit symbols/format flag, then pauses" {
   export PATH="$STUB:$PATH"
-  unset KITTY_WINDOW_ID
+  unset KITTY_WINDOW_ID TERM_PROGRAM
   export TERM=xterm
   run bash -c ". '$LIB'; render_image '$FIX/t.png' <<<'x'"
   [ "$status" -eq 0 ]
@@ -109,10 +109,23 @@ teardown() {
 @test "render_image: a kitty-capable env still produces a valid render (enhancement path does not break)" {
   export PATH="$STUB:$PATH"
   export KITTY_WINDOW_ID=1
+  unset TERM_PROGRAM
   run bash -c ". '$LIB'; render_image '$FIX/t.png' <<<'x'"
   [ "$status" -eq 0 ]
   [ -f "$FIX/chafa.argv" ]
   grep -qx -- "$FIX/t.png" "$FIX/chafa.argv"
   # the enhancement branch omits --format, letting chafa auto-detect.
   ! grep -qx -- '--format' "$FIX/chafa.argv"
+}
+
+@test "render_image: a herdr pane forces the kitty format (herdr renders pane graphics, chafa cannot detect it)" {
+  export PATH="$STUB:$PATH"
+  unset KITTY_WINDOW_ID
+  export TERM=xterm-256color TERM_PROGRAM=herdr
+  run bash -c ". '$LIB'; render_image '$FIX/t.png' <<<'x'"
+  [ "$status" -eq 0 ]
+  [ -f "$FIX/chafa.argv" ]
+  grep -qx -- '--format' "$FIX/chafa.argv"
+  grep -qx -- 'kitty' "$FIX/chafa.argv"
+  grep -qx -- "$FIX/t.png" "$FIX/chafa.argv"
 }
