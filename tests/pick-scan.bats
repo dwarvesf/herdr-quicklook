@@ -692,3 +692,20 @@ SCRIPT
   run bash -c ". '$LIB'; printf 'a\nb\n' | pad_left"
   [ "$output" = "$(printf '  a\n  b')" ]
 }
+
+# ---- tilde-form paths (how Claude Code prints file attachments) ----
+
+@test "pick_scan_text: should classify a tilde-form path as a path when it exists under HOME" {
+  HOME="$FIX/home"
+  mkdir -p "$HOME/clips"
+  printf 'audio\n' >"$HOME/clips/speaker.m4a"
+  run pick_scan_text <<<'  › [file] ~/clips/speaker.m4a (272KB)'
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"$(printf '~/clips/speaker.m4a\tpath\t1')"* ]]
+}
+
+@test "pick_scan_text: should skip a tilde-form path when nothing exists there" {
+  HOME="$FIX/home"
+  run pick_scan_text <<<'see ~/clips/missing.m4a'
+  [[ "$output" != *"missing.m4a"* ]]
+}

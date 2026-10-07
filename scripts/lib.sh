@@ -1473,6 +1473,13 @@ _pick_cut_from_field() {
 # dynamic scoping makes it visible here without passing it explicitly).
 _pick_resolve_local() {
   local p="$1" w r
+  # Same expansion resolve_any_token does at open time; without it a
+  # tilde-form path (how Claude Code prints file attachments) never becomes a
+  # hint in the default scan, only in QUICKLOOK_SCAN_FAST.
+  # shellcheck disable=SC2088  # literal ~/ match is the point: WE expand it
+  case "$p" in
+    '~/'*) p="$HOME/${p#'~/'}" ;;
+  esac
   if [ -f "$p" ]; then
     case "$p" in
       /*) printf '%s' "$p" ;;
